@@ -8,7 +8,7 @@ from email.utils import parsedate_to_datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from worker.config import BANK_SENDERS, GMAIL_CREDENTIALS
+from worker.config import GMAIL_CREDENTIALS, GMAIL_LABEL
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,15 @@ def _save_cursor(timestamp: str):
         json.dump({"last_timestamp": timestamp}, f)
 
 
-def _build_sender_query() -> str:
-    parts = [f"from:{sender}" for sender in BANK_SENDERS]
-    return "{" + " ".join(parts) + "}"
+def _get_label_id(service) -> str | None:
+    try:
+        results = service.users().labels().list(userId="me").execute()
+        for label in results.get("labels", []):
+            if label["name"] == GMAIL_LABEL:
+                return label["id"]
+    except Exception:
+        logger.exception("Failed to list Gmail labels")
+    return None
 
 
 def _extract_body(payload: dict) -> str:
@@ -72,12 +78,19 @@ async def fetch_new_alerts() -> list[Email]:
     service = _build_service()
     cursor = _load_cursor()
 
-    query = _build_sender_query()
+    label_id = _get_label_id(service)
+    if not label_id:
+        logger.error("Gmail label '%s' not found", GMAIL_LABEL)
+        return []
+
+    query = ""
     if cursor:
-        query += f" after:{cursor}"
+        query = f"after:{cursor}"
 
     try:
-        results = service.users().messages().list(userId="me", q=query).execute()
+        results = (
+            service.users().messages().list(userId="me", labelIds=[label_id], q=query).execute()
+        )
     except Exception:
         logger.exception("Failed to list Gmail messages")
         return []

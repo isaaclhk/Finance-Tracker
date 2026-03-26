@@ -6,13 +6,7 @@ FIREFLY_TOKEN = os.getenv("FIREFLY_TOKEN", "")
 
 # Gmail
 GMAIL_CREDENTIALS = os.getenv("GMAIL_CREDENTIALS", "")
-BANK_SENDERS = [
-    "alerts@ocbc.com",
-    "donotreply@ocbc.com",
-    "ealerts@uob.com.sg",
-    "alerts@uob.com.sg",
-    "support@syfe.com",
-]
+GMAIL_LABEL = os.getenv("GMAIL_LABEL", "Bank Alerts")
 
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")

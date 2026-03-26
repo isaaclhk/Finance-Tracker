@@ -207,6 +207,94 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /update <account> <balance>\n"
+            "Examples:\n"
+            "  /update syfe 8500\n"
+            "  /update ibkr 45200\n"
+            '  /update "Syfe Core" 8500.50'
+        )
+        return
+
+    # Parse balance (last arg) and account name (everything before it)
+    try:
+        balance = float(args[-1])
+    except ValueError:
+        await update.message.reply_text("Invalid balance. Must be a number.")
+        return
+
+    account_name = " ".join(args[:-1]).strip('"').strip("'")
+
+    # Find matching account in Firefly III
+    try:
+        accounts = await firefly_client.get_accounts()
+    except Exception:
+        await update.message.reply_text("Failed to fetch accounts.")
+        return
+
+    matched = None
+    for acct in accounts:
+        attrs = acct.get("attributes", {})
+        name = attrs.get("name", "")
+        if name.lower() == account_name.lower() or account_name.lower() in name.lower():
+            matched = acct
+            break
+
+    if not matched:
+        names = [a["attributes"]["name"] for a in accounts if "attributes" in a]
+        await update.message.reply_text(
+            f"Account '{account_name}' not found.\nAvailable accounts: {', '.join(names)}"
+        )
+        return
+
+    acct_name = matched["attributes"]["name"]
+    current = float(matched["attributes"].get("current_balance", 0))
+    diff = balance - current
+
+    if abs(diff) < 0.01:
+        await update.message.reply_text(f"{acct_name} is already at ${balance:,.2f}")
+        return
+
+    # Create a correction transaction to adjust the balance
+    if diff > 0:
+        payload = {
+            "transactions": [
+                {
+                    "type": "deposit",
+                    "date": date.today().isoformat(),
+                    "amount": str(abs(diff)),
+                    "description": f"Balance adjustment for {acct_name}",
+                    "source_name": "Balance Adjustment",
+                    "destination_name": acct_name,
+                }
+            ]
+        }
+    else:
+        payload = {
+            "transactions": [
+                {
+                    "type": "withdrawal",
+                    "date": date.today().isoformat(),
+                    "amount": str(abs(diff)),
+                    "description": f"Balance adjustment for {acct_name}",
+                    "source_name": acct_name,
+                    "destination_name": "Balance Adjustment",
+                }
+            ]
+        }
+
+    try:
+        await firefly_client.create_transaction(payload)
+    except Exception:
+        await update.message.reply_text("Failed to update balance.")
+        return
+
+    await update.message.reply_text(f"Updated {acct_name}: ${current:,.2f} → ${balance:,.2f}")
+
+
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Available commands:\n\n"
@@ -215,6 +303,8 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/spent [period] [category] — Show spending\n"
         "  Examples: /spent today, /spent this month food\n"
         "/summary — Monthly spending summary\n"
+        "/update <account> <balance> — Manually set account balance\n"
+        "  Examples: /update syfe 8500, /update ibkr 45200\n"
         "/help — Show this message\n\n"
         "Or just ask me anything about your finances!"
     )

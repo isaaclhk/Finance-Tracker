@@ -1,18 +1,6 @@
 import base64
-import json
-from unittest.mock import MagicMock, patch
 
-import pytest
-
-from worker.integrations.gmail_client import Email, _build_sender_query, _extract_body
-
-
-def test_build_sender_query():
-    query = _build_sender_query()
-    assert query.startswith("{")
-    assert query.endswith("}")
-    assert "from:alerts@ocbc.com" in query
-    assert "from:ealerts@uob.com.sg" in query
+from worker.integrations.gmail_client import _extract_body
 
 
 def test_extract_body_plain_text():

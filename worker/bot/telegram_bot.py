@@ -41,6 +41,7 @@ def get_application() -> Application:
             handle_refresh,
             handle_spent,
             handle_summary,
+            handle_update,
         )
         from worker.bot.llm_query import handle_natural_query
 
@@ -50,6 +51,7 @@ def get_application() -> Application:
         _application.add_handler(CommandHandler("balance", auth_required(handle_balance)))
         _application.add_handler(CommandHandler("spent", auth_required(handle_spent)))
         _application.add_handler(CommandHandler("summary", auth_required(handle_summary)))
+        _application.add_handler(CommandHandler("update", auth_required(handle_update)))
         _application.add_handler(CommandHandler("help", auth_required(handle_help)))
         _application.add_handler(CallbackQueryHandler(auth_required(handle_category_callback)))
         _application.add_handler(
