@@ -10,17 +10,78 @@ from worker.services.transaction_processor import process_new_emails
 logger = logging.getLogger(__name__)
 
 
+async def _update_account_balance(account_name: str, new_balance: float) -> str | None:
+    try:
+        accounts = await firefly_client.get_accounts()
+    except Exception:
+        return None
+
+    matched = None
+    for acct in accounts:
+        attrs = acct.get("attributes", {})
+        name = attrs.get("name", "")
+        if name.lower() == account_name.lower() or account_name.lower() in name.lower():
+            matched = acct
+            break
+
+    if not matched:
+        return None
+
+    acct_name = matched["attributes"]["name"]
+    current = float(matched["attributes"].get("current_balance", 0))
+    diff = new_balance - current
+
+    if abs(diff) < 0.01:
+        return None
+
+    if diff > 0:
+        payload = {
+            "transactions": [
+                {
+                    "type": "deposit",
+                    "date": date.today().isoformat(),
+                    "amount": str(abs(diff)),
+                    "description": f"Balance adjustment for {acct_name}",
+                    "source_name": "Balance Adjustment",
+                    "destination_name": acct_name,
+                }
+            ]
+        }
+    else:
+        payload = {
+            "transactions": [
+                {
+                    "type": "withdrawal",
+                    "date": date.today().isoformat(),
+                    "amount": str(abs(diff)),
+                    "description": f"Balance adjustment for {acct_name}",
+                    "source_name": acct_name,
+                    "destination_name": "Balance Adjustment",
+                }
+            ]
+        }
+
+    try:
+        await firefly_client.create_transaction(payload)
+        return f"{acct_name}: ${current:,.2f} → ${new_balance:,.2f}"
+    except Exception:
+        return None
+
+
 async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Refreshing...")
 
     result = await process_new_emails()
 
-    # Try API first, fall back to email-parsed data
     ibkr_msg = ""
     try:
         ibkr_data = await ibkr_flex.fetch_ibkr_data()
-        if ibkr_data:
-            ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f}"
+        if ibkr_data and ibkr_data["total_equity"] > 0:
+            updated = await _update_account_balance("IBKR", ibkr_data["total_equity"])
+            if updated:
+                ibkr_msg = f"\nIBKR updated: {updated}"
+            else:
+                ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f} (no change)"
     except ibkr_flex.IBKRTokenError as e:
         ibkr_msg = f"\nIBKR token expired or invalid: {e}\nPlease renew at IBKR Client Portal."
 
@@ -219,11 +280,10 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Examples:\n"
             "  /update syfe 8500\n"
             "  /update ibkr 45200\n"
-            '  /update "Syfe Core" 8500.50'
+            '  /update "Syfe Cash" 8500.50'
         )
         return
 
-    # Parse balance (last arg) and account name (everything before it)
     try:
         balance = float(args[-1])
     except ValueError:
@@ -231,72 +291,14 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     account_name = " ".join(args[:-1]).strip('"').strip("'")
+    result = await _update_account_balance(account_name, balance)
 
-    # Find matching account in Firefly III
-    try:
-        accounts = await firefly_client.get_accounts()
-    except Exception:
-        await update.message.reply_text("Failed to fetch accounts.")
-        return
-
-    matched = None
-    for acct in accounts:
-        attrs = acct.get("attributes", {})
-        name = attrs.get("name", "")
-        if name.lower() == account_name.lower() or account_name.lower() in name.lower():
-            matched = acct
-            break
-
-    if not matched:
-        names = [a["attributes"]["name"] for a in accounts if "attributes" in a]
-        await update.message.reply_text(
-            f"Account '{account_name}' not found.\nAvailable accounts: {', '.join(names)}"
-        )
-        return
-
-    acct_name = matched["attributes"]["name"]
-    current = float(matched["attributes"].get("current_balance", 0))
-    diff = balance - current
-
-    if abs(diff) < 0.01:
-        await update.message.reply_text(f"{acct_name} is already at ${balance:,.2f}")
-        return
-
-    # Create a correction transaction to adjust the balance
-    if diff > 0:
-        payload = {
-            "transactions": [
-                {
-                    "type": "deposit",
-                    "date": date.today().isoformat(),
-                    "amount": str(abs(diff)),
-                    "description": f"Balance adjustment for {acct_name}",
-                    "source_name": "Balance Adjustment",
-                    "destination_name": acct_name,
-                }
-            ]
-        }
+    if result:
+        await update.message.reply_text(f"Updated {result}")
     else:
-        payload = {
-            "transactions": [
-                {
-                    "type": "withdrawal",
-                    "date": date.today().isoformat(),
-                    "amount": str(abs(diff)),
-                    "description": f"Balance adjustment for {acct_name}",
-                    "source_name": acct_name,
-                    "destination_name": "Balance Adjustment",
-                }
-            ]
-        }
-
-    try:
-        await firefly_client.create_transaction(payload)
-    except Exception:
-        await update.message.reply_text("Failed to update balance.")
-        return
-
-    await update.message.reply_text(f"Updated {acct_name}: ${current:,.2f} → ${balance:,.2f}")
+        await update.message.reply_text(
+            f"Could not update '{account_name}'. Account not found or balance unchanged."
+        )
 
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
