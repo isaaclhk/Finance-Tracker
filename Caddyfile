@@ -1,0 +1,3 @@
+{$DOMAIN} {
+    reverse_proxy firefly:8080
+}
