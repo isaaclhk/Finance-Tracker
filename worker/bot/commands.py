@@ -16,10 +16,13 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await process_new_emails()
 
     # Try API first, fall back to email-parsed data
-    ibkr_data = await ibkr_flex.fetch_ibkr_data() or result.ibkr_data
     ibkr_msg = ""
-    if ibkr_data:
-        ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f}"
+    try:
+        ibkr_data = await ibkr_flex.fetch_ibkr_data() or result.ibkr_data
+        if ibkr_data:
+            ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f}"
+    except ibkr_flex.IBKRTokenError as e:
+        ibkr_msg = f"\nIBKR token expired or invalid: {e}\nPlease renew at IBKR Client Portal."
 
     msg = (
         f"Found {result.new_count} new transaction(s). "

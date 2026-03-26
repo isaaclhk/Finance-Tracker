@@ -80,6 +80,18 @@ def parse_ibkr_from_email(attachments: list[dict]) -> dict | None:
     return None
 
 
+def _check_for_error(xml_text: str) -> str | None:
+    try:
+        root = ET.fromstring(xml_text)
+        error_code = root.get("errorCode", "")
+        error_msg = root.get("errorMessage", "")
+        if error_code or "invalid" in xml_text.lower():
+            return error_msg or f"Error code: {error_code}"
+    except ET.ParseError:
+        pass
+    return None
+
+
 async def fetch_ibkr_data() -> dict | None:
     if not IBKR_FLEX_TOKEN or not IBKR_FLEX_QUERY_ID:
         logger.info("IBKR API credentials not configured, skipping API fetch")
@@ -94,6 +106,11 @@ async def fetch_ibkr_data() -> dict | None:
         except Exception:
             logger.exception("Failed to request IBKR Flex report")
             return None
+
+        error = _check_for_error(resp.text)
+        if error:
+            logger.error("IBKR Flex API error: %s", error)
+            raise IBKRTokenError(error)
 
         reference_code = _parse_reference_code(resp.text)
         if not reference_code:
@@ -113,3 +130,7 @@ async def fetch_ibkr_data() -> dict | None:
             return None
 
         return _parse_flex_xml(resp.text)
+
+
+class IBKRTokenError(Exception):
+    pass
