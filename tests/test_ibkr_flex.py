@@ -15,7 +15,9 @@ def test_parse_flex_xml_positions():
 <FlexQueryResponse>
   <FlexStatements>
     <FlexStatement>
-      <EquitySummaryInBase totalLong="45200.00" />
+      <EquitySummaryInBase>
+        <EquitySummaryByReportDateInBase totalLong="45200.00" />
+      </EquitySummaryInBase>
       <OpenPositions>
         <OpenPosition symbol="AAPL" position="10" markPrice="185.50" currency="USD" />
         <OpenPosition symbol="MSFT" position="5" markPrice="420.00" currency="USD" />

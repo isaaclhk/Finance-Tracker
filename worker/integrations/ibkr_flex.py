@@ -34,26 +34,13 @@ def _parse_flex_xml(xml_text: str) -> dict:
     try:
         root = ET.fromstring(xml_text)
 
-        # Log all top-level element tags for debugging
-        all_tags = {elem.tag for elem in root.iter()}
-        logger.info("IBKR XML elements found: %s", all_tags)
-
-        for eq in root.iter("EquitySummaryInBase"):
-            logger.info("EquitySummaryInBase attributes: %s", eq.attrib)
-            logger.info("EquitySummaryInBase children: %s", [
-                (child.tag, child.attrib) for child in eq
-            ])
-            # Try attribute first, then child elements
-            total = eq.get("totalLong") or eq.get("total")
-            if total is None:
-                for child in eq:
-                    if "total" in child.tag.lower() or "long" in child.tag.lower():
-                        total = child.get("total") or child.get("totalLong") or child.text
-                        logger.info("Found total in child %s: %s", child.tag, total)
-                        break
-            if total:
-                result["total_equity"] = float(total)
-            break
+        # Get the latest EquitySummaryByReportDateInBase (last child of EquitySummaryInBase)
+        latest_equity = None
+        for eq in root.iter("EquitySummaryByReportDateInBase"):
+            latest_equity = eq
+        if latest_equity is not None:
+            total = latest_equity.get("totalLong", "0")
+            result["total_equity"] = float(total)
 
         for pos in root.iter("OpenPosition"):
             result["positions"].append(
