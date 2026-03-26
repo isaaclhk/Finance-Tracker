@@ -5,8 +5,8 @@ services:
     volumes:
       - firefly_upload:/var/www/html/storage/upload
       - firefly_db:/var/www/html/storage/database
-    expose:
-      - "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env
     environment:
@@ -40,19 +40,6 @@ services:
       CONVERSATION_HISTORY_LENGTH: ${CONVERSATION_HISTORY_LENGTH:-5}
       CONVERSATION_TIMEOUT_MINUTES: ${CONVERSATION_TIMEOUT_MINUTES:-30}
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-
 volumes:
   firefly_upload:
   firefly_db:
-  caddy_data:
-  caddy_config:
