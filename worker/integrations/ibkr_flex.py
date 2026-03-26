@@ -81,7 +81,7 @@ async def fetch_ibkr_data() -> dict | None:
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         # Step 1: Request report generation
-        request_url = f"{FLEX_BASE_URL}.SendRequest?t={IBKR_FLEX_TOKEN}&q={IBKR_FLEX_QUERY_ID}&v=3"
+        request_url = f"{FLEX_BASE_URL}/SendRequest?t={IBKR_FLEX_TOKEN}&q={IBKR_FLEX_QUERY_ID}&v=3"
         try:
             resp = await client.get(request_url)
             resp.raise_for_status()
@@ -103,7 +103,7 @@ async def fetch_ibkr_data() -> dict | None:
         await asyncio.sleep(5)
 
         # Step 3: Fetch the report
-        statement_url = f"{FLEX_BASE_URL}.GetStatement?t={IBKR_FLEX_TOKEN}&q={reference_code}&v=3"
+        statement_url = f"{FLEX_BASE_URL}/GetStatement?t={IBKR_FLEX_TOKEN}&q={reference_code}&v=3"
         try:
             resp = await client.get(statement_url)
             resp.raise_for_status()
