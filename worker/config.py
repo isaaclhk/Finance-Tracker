@@ -21,6 +21,7 @@ OPENAI_QUERY_MODEL = os.getenv("OPENAI_QUERY_MODEL", "gpt-4.1-mini")
 # IBKR
 IBKR_FLEX_TOKEN = os.getenv("IBKR_FLEX_TOKEN", "")
 IBKR_FLEX_QUERY_ID = os.getenv("IBKR_FLEX_QUERY_ID", "")
+IBKR_EMAIL_SENDER = os.getenv("IBKR_EMAIL_SENDER", "donotreply@interactivebrokers.com")
 
 # Validation thresholds
 VALIDATION_LARGE_AMOUNT_THRESHOLD = float(os.getenv("VALIDATION_LARGE_AMOUNT_THRESHOLD", "5000"))

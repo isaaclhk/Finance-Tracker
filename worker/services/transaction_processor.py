@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
-from worker.integrations import firefly_client, gmail_client
+from worker.integrations import firefly_client, gmail_client, ibkr_flex
 from worker.parsers import llm_email_parser
 from worker.parsers.validator import WARNING_LARGE_AMOUNT, validate_parsed_transaction
 from worker.services.account_mapper import get_firefly_transaction_type, map_to_firefly_account
@@ -17,6 +17,7 @@ class ProcessResult:
     auto_categorized: int = 0
     pending_review: list[dict] = field(default_factory=list)
     errors: int = 0
+    ibkr_data: dict | None = None
 
 
 def _build_firefly_payload(validated: dict, source_account: str) -> dict:
@@ -58,6 +59,14 @@ async def process_new_emails() -> ProcessResult:
         return result
 
     for email in emails:
+        # Check if this is an IBKR Flex report email
+        if ibkr_flex.is_ibkr_email(email.sender) and email.attachments:
+            ibkr_data = ibkr_flex.parse_ibkr_from_email(email.attachments)
+            if ibkr_data:
+                result.ibkr_data = ibkr_data
+                logger.info("Parsed IBKR data from email: equity=%.2f", ibkr_data["total_equity"])
+            continue
+
         try:
             parsed = await llm_email_parser.parse_and_categorize(email.body, email.sender)
             if parsed is None:

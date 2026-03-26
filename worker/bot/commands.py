@@ -15,7 +15,8 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     result = await process_new_emails()
 
-    ibkr_data = await ibkr_flex.fetch_ibkr_data()
+    # Try API first, fall back to email-parsed data
+    ibkr_data = await ibkr_flex.fetch_ibkr_data() or result.ibkr_data
     ibkr_msg = ""
     if ibkr_data:
         ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f}"

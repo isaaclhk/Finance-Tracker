@@ -23,6 +23,7 @@ class Email:
     subject: str
     body: str
     timestamp: str
+    attachments: list[dict] | None = None  # [{"filename": ..., "data": bytes}]
 
 
 def _build_service():
@@ -74,6 +75,30 @@ def _extract_body(payload: dict) -> str:
     return ""
 
 
+def _extract_attachments(service, message_id: str, payload: dict) -> list[dict]:
+    attachments = []
+    for part in payload.get("parts", []):
+        filename = part.get("filename", "")
+        if not filename:
+            continue
+        attachment_id = part.get("body", {}).get("attachmentId")
+        if not attachment_id:
+            continue
+        try:
+            att = (
+                service.users()
+                .messages()
+                .attachments()
+                .get(userId="me", messageId=message_id, id=attachment_id)
+                .execute()
+            )
+            data = base64.urlsafe_b64decode(att["data"])
+            attachments.append({"filename": filename, "data": data})
+        except Exception:
+            logger.exception("Failed to fetch attachment %s", filename)
+    return attachments
+
+
 async def fetch_new_alerts() -> list[Email]:
     service = _build_service()
     cursor = _load_cursor()
@@ -120,6 +145,8 @@ async def fetch_new_alerts() -> list[Email]:
                 except Exception:
                     timestamp = date_str
 
+            attachments = _extract_attachments(service, msg_ref["id"], msg["payload"])
+
             emails.append(
                 Email(
                     message_id=msg_ref["id"],
@@ -127,6 +154,7 @@ async def fetch_new_alerts() -> list[Email]:
                     subject=subject,
                     body=body,
                     timestamp=timestamp,
+                    attachments=attachments or None,
                 )
             )
 
