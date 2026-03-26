@@ -112,6 +112,16 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = attrs.get("name", "Unknown")
         acct_type = attrs.get("type", "")
         balance = float(attrs.get("current_balance", 0))
+        last_activity = attrs.get("last_activity") or attrs.get("updated_at", "")
+
+        # Format date: "2026-03-27T10:30:00+08:00" → "27 Mar"
+        date_str = ""
+        if last_activity:
+            try:
+                dt = date.fromisoformat(last_activity[:10])
+                date_str = f" ({dt.strftime('%d %b')})"
+            except ValueError:
+                pass
 
         if acct_type == "asset":
             icon = "Bank"
@@ -121,7 +131,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             continue
 
-        lines.append(f"  {icon}: {name}: ${balance:,.2f}")
+        lines.append(f"  {icon}: {name}: ${balance:,.2f}{date_str}")
         total += balance
 
     lines.append(f"\nNet Worth: ${total:,.2f}")
