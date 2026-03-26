@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 _BANK_FALLBACKS: dict[str, str] = {
     "OCBC": "OCBC Savings",
     "UOB": "UOB Savings",
-    "Trust": "Trust Bank Card",
+    "Trust": "Trust Card",
     "Syfe": "Syfe Cash",
 }
 
