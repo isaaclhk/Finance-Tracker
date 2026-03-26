@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 import httpx
 
-from worker.config import IBKR_EMAIL_SENDER, IBKR_FLEX_QUERY_ID, IBKR_FLEX_TOKEN
+from worker.config import IBKR_FLEX_QUERY_ID, IBKR_FLEX_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -60,24 +60,6 @@ def _parse_flex_xml(xml_text: str) -> dict:
         logger.exception("Failed to parse IBKR Flex XML")
 
     return result
-
-
-def is_ibkr_email(sender: str) -> bool:
-    return IBKR_EMAIL_SENDER.lower() in sender.lower()
-
-
-def parse_ibkr_from_email(attachments: list[dict]) -> dict | None:
-    for att in attachments:
-        filename = att.get("filename", "").lower()
-        if filename.endswith(".xml"):
-            try:
-                xml_text = att["data"].decode("utf-8", errors="replace")
-                result = _parse_flex_xml(xml_text)
-                if result["total_equity"] > 0 or result["positions"] or result["cash_balances"]:
-                    return result
-            except Exception:
-                logger.exception("Failed to parse IBKR XML attachment: %s", filename)
-    return None
 
 
 def _check_for_error(xml_text: str) -> str | None:

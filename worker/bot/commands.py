@@ -18,7 +18,7 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Try API first, fall back to email-parsed data
     ibkr_msg = ""
     try:
-        ibkr_data = await ibkr_flex.fetch_ibkr_data() or result.ibkr_data
+        ibkr_data = await ibkr_flex.fetch_ibkr_data()
         if ibkr_data:
             ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f}"
     except ibkr_flex.IBKRTokenError as e:
