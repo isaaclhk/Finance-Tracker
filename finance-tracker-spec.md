@@ -2,34 +2,34 @@
 
 ## Overview
 
-Build a self-hosted personal finance tracking system for a Singapore-based couple with shared finances. The system automatically ingests bank transaction data from email alerts (OCBC, UOB, Trust Bank), investment data from IBKR and Syfe, categorizes transactions using a hybrid Firefly III rules + LLM approach with user confirmation via Telegram, and provides a shared Telegram group bot for interaction and natural language queries. Firefly III serves as the financial data backend and dashboard. Everything runs on a single Hetzner VPS via Docker Compose. Personal/private accounts (DBS) are excluded.
+Build a self-hosted personal finance tracking system for a Singapore-based couple with shared finances. The system automatically ingests bank transaction data from email alerts (OCBC, UOB, Trust Bank), investment data from IBKR (via Flex Query API), categorizes transactions using a hybrid Firefly III rules + LLM approach with user confirmation via Telegram, and provides a shared Telegram group bot for interaction and natural language queries. Firefly III serves as the financial data backend and dashboard. Syfe Cash is tracked via manual balance updates (`/update` command). Everything runs on a local homelab server via Docker Compose, with Cloudflare Tunnel for HTTPS access. Personal/private accounts (DBS) are excluded.
 
 ## Architecture
 
 ```
-Bank transaction emails ──→ Gmail ──→ Python Worker (Hetzner VPS)
-Syfe notifications ────────→ Gmail ──→       │
+Bank transaction emails ──→ Gmail ──→ Python Worker (Homelab)
 IBKR Flex Queries ─────────────────→       │
+Syfe / manual updates ────────────→       │ (via /update command)
                                             │
                                   ┌─────────┴──────────┐
                                   │                    │
                             Known merchant?      Unknown merchant?
                                   │                    │
-                            Auto-categorize      GPT-5.4 nano suggests
+                            Auto-categorize      GPT-4.1 nano suggests
                             Push to Firefly      Ask user via Telegram
                                   │                    │
                                   │              User taps button
                                   │                    │
                                   └─────────┬──────────┘
                                             │
-                                  Firefly III + SQLite (Hetzner VPS)
+                                  Firefly III + SQLite (Homelab)
                                             │
                                   ┌─────────┴──────────┐
                                   │                    │
                           Firefly III Web UI     Telegram bot
                           (reports + admin)      (commands + LLM queries)
                                                        │
-                                                GPT-5.4 mini
+                                                GPT-4.1 mini
                                                 (natural language answers)
 ```
 
@@ -42,24 +42,23 @@ IBKR Flex Queries ─────────────────→       �
 | Worker service | Python 3.11+ with FastAPI |
 | Email integration | Gmail API (OAuth2) |
 | Telegram bot | `python-telegram-bot` library |
-| LLM categorization | OpenAI API — GPT-5.4 nano for categorization |
-| LLM queries | OpenAI API — GPT-5.4 mini for natural language finance queries |
-| IBKR data | IBKR Flex Web Service (XML reports) |
-| Deployment | Hetzner VPS + Docker Compose |
-| HTTPS | Caddy reverse proxy (auto SSL via Let's Encrypt) |
+| LLM categorization | OpenAI API — GPT-4.1 nano for categorization |
+| LLM queries | OpenAI API — GPT-4.1 mini for natural language finance queries |
+| IBKR data | IBKR Flex Web Service (XML reports via API) |
+| Deployment | Local homelab server + Docker Compose |
+| HTTPS | Cloudflare Tunnel (no port forwarding needed) |
 | Mobile app | Firefly III web UI (bookmark on phone home screen) |
 
-## Hosting — Hetzner VPS + Docker Compose
+## Hosting — Local Homelab + Docker Compose
 
-All three services run on a single Hetzner VPS using Docker Compose. This is the cheapest reliable hosting option (~€3.29/month).
+Two services run on a local homelab server using Docker Compose. Cloudflare Tunnel provides HTTPS access without port forwarding.
 
-### VPS Specs
+### Server
 
-- Provider: Hetzner Cloud (hetzner.com)
-- Plan: CX22 or equivalent (~€3.29/month)
-- Specs: 2 vCPU, 2GB RAM, 20GB SSD
-- OS: Ubuntu 24.04 LTS
-- Location: Singapore (if available) or nearest Asia region
+- Local homelab machine (Ubuntu 24.04 LTS)
+- Docker + Docker Compose installed
+- Cloudflare Tunnel (`cloudflared`) installed as a systemd service
+- Domain: `finance.lam-lab.cc` (Cloudflare DNS with CNAME to tunnel)
 
 ### docker-compose.yml
 
@@ -71,8 +70,8 @@ services:
     volumes:
       - firefly_upload:/var/www/html/storage/upload
       - firefly_db:/var/www/html/storage/database
-    expose:
-      - "8080"  # Only accessible within Docker network (via Caddy)
+    ports:
+      - "127.0.0.1:8080:8080"  # Only accessible on localhost (via Cloudflare Tunnel)
     env_file:
       - .env
     environment:
@@ -88,7 +87,7 @@ services:
     depends_on:
       - firefly
     volumes:
-      - ./soul.md:/app/soul.md:ro  # Bot personality file (read-only, editable on host)
+      - ./soul.md:/app/soul.md:ro
     env_file:
       - .env
     environment:
@@ -106,55 +105,53 @@ services:
       CONVERSATION_HISTORY_LENGTH: ${CONVERSATION_HISTORY_LENGTH:-5}
       CONVERSATION_TIMEOUT_MINUTES: ${CONVERSATION_TIMEOUT_MINUTES:-30}
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-
 volumes:
   firefly_upload:
   firefly_db:
-  caddy_data:
-  caddy_config:
 ```
 
-### Caddyfile (auto HTTPS via Let's Encrypt)
+### Cloudflare Tunnel (replaces Caddy)
 
-```
-{$DOMAIN} {
-    reverse_proxy firefly:8080
-}
+HTTPS is handled by Cloudflare Tunnel instead of Caddy. The tunnel runs as a systemd service (`cloudflared`) and routes `finance.lam-lab.cc` to `http://localhost:8080`. No port forwarding or SSL certificates needed.
+
+Config at `/etc/cloudflared/config.yml`:
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: finance.lam-lab.cc
+    service: http://localhost:8080
+  - service: http_status:404
 ```
 
 ### .env file (all secrets in one place, never committed to git)
 
 ```bash
 # Domain
-DOMAIN=finance.yourdomain.com
+DOMAIN=finance.lam-lab.cc
 
 # Firefly III
-APP_KEY=your_32_character_random_string
-FIREFLY_TOKEN=your_firefly_personal_access_token
+APP_KEY=<generated via: head -c 32 /dev/urandom | base64 | head -c 32>
+FIREFLY_TOKEN=<Firefly III Personal Access Token>
 
-# Gmail
-GMAIL_CREDENTIALS={"your":"oauth_credentials_json"}
+# Gmail (label-based filtering — only reads emails with "Bank Alerts" label)
+GMAIL_CREDENTIALS={"client_id":"...","client_secret":"...","refresh_token":"...","token":"...","token_uri":"..."}
 
 # Telegram
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_CHAT_ID=your_group_chat_id
+TELEGRAM_BOT_TOKEN=<from @BotFather>
+TELEGRAM_CHAT_ID=<group chat ID, negative number>
 
 # OpenAI
-OPENAI_API_KEY=your_openai_api_key
+OPENAI_API_KEY=<OpenAI API key>
 
 # IBKR
-IBKR_FLEX_TOKEN=your_ibkr_flex_token
-IBKR_FLEX_QUERY_ID=your_ibkr_flex_query_id
+IBKR_FLEX_TOKEN=<IBKR Flex Web Service token, expires ~1 year>
+IBKR_FLEX_QUERY_ID=<Flex Query ID>
+
+# Account mapping (JSON: card last 4 digits → Firefly III account name)
+# Bank name fallbacks (OCBC, UOB, Trust, Syfe) are built in
+ACCOUNT_MAP={"1234": "UOB Credit Card", "5678": "Trust Card", "9012": "OCBC Savings", "0001": "UOB Savings"}
 
 # Validation thresholds (optional, defaults shown)
 VALIDATION_LARGE_AMOUNT_THRESHOLD=5000
@@ -162,10 +159,8 @@ VALIDATION_SMALL_AMOUNT_MIN=0.01
 VALIDATION_MAX_AMOUNT=50000
 
 # Conversation memory (optional, defaults shown)
-CONVERSATION_HISTORY_LENGTH=5       # Number of past exchanges to remember (0 to disable)
-CONVERSATION_TIMEOUT_MINUTES=30     # Reset history after this many minutes of inactivity
-
-# Bot personality is defined in soul.md (not here — see soul.md in project root)
+CONVERSATION_HISTORY_LENGTH=5
+CONVERSATION_TIMEOUT_MINUTES=30
 ```
 
 ## Python Worker Service — Detailed Specification
@@ -175,9 +170,10 @@ CONVERSATION_TIMEOUT_MINUTES=30     # Reset history after this many minutes of i
 ```
 finance-tracker/
 ├── docker-compose.yml
-├── Caddyfile
 ├── .env                       # Secrets and config (never commit)
+├── .env.example               # Template with all env vars
 ├── soul.md                    # Bot personality definition (editable anytime)
+├── pyproject.toml             # Project metadata, ruff config, uv settings
 ├── worker/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -186,7 +182,7 @@ finance-tracker/
 │   ├── bot/
 │   │   ├── __init__.py
 │   │   ├── telegram_bot.py        # Telegram bot setup and handlers
-│   │   ├── commands.py            # /refresh, /balance, /spent, /summary commands
+│   │   ├── commands.py            # /refresh, /balance, /spent, /summary, /update, /help commands
 │   │   ├── callbacks.py           # Inline keyboard callback handlers (category confirmation)
 │   │   └── llm_query.py           # Natural language query handler
 │   ├── parsers/
@@ -232,8 +228,8 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+COPY . ./worker/
+CMD ["uvicorn", "worker.main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
 ---
@@ -242,28 +238,26 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 ### Gmail API Integration (`gmail_client.py`)
 
-- Connect to the user's existing Gmail account using OAuth2
-- Query for emails from bank senders since the last processed email
-- Filter by sender addresses (only shared accounts):
-  - OCBC: `alerts@ocbc.com` or similar OCBC sender
-  - UOB: `alerts@uob.com.sg` or similar UOB sender
+- Connect to the user's Gmail account using OAuth2
+- Filter by Gmail label instead of sender addresses — only reads emails with the **"Bank Alerts"** label (configurable via `GMAIL_LABEL` env var)
+- Gmail filters auto-label incoming bank emails:
+  - OCBC: `documents@ocbc.com`, `Notifications@ocbc.com`
+  - UOB: `unialerts@uobgroup.com`
   - Trust Bank: TBD — verify actual sender address
-  - Syfe: `support@syfe.com` or similar Syfe sender
-- Ignore emails from DBS (personal accounts, not tracked)
-- Track the last processed email timestamp to avoid reprocessing
-- Store the last-processed cursor/timestamp in a persistent way (e.g., a small JSON file on a Docker volume or a Firefly III tag)
-- **Important:** Confirm exact sender addresses by checking real alert emails in the user's inbox during initial setup
+- Multiple Gmail accounts forward alerts to one primary account; Gmail filters label them all as "Bank Alerts"
+- Track the last processed email timestamp to avoid reprocessing (stored in a JSON cursor file)
+- Supports email attachments extraction (for potential future use)
 
 ### Universal LLM Email Parser (`llm_email_parser.py`)
 
-Instead of writing separate regex parsers for each bank, use a single GPT-5.4 nano call to parse ALL bank emails. This is resilient to email format changes and works for any bank without code modifications.
+Instead of writing separate regex parsers for each bank, use a single GPT-4.1 nano call to parse ALL bank emails. This is resilient to email format changes and works for any bank without code modifications.
 
 **Combined parsing + categorization in one call:**
 
 ```python
 async def parse_and_categorize(email_body: str, sender: str) -> dict:
     response = await openai_client.chat.completions.create(
-        model="gpt-5.4-nano",
+        model="gpt-4.1-nano",
         max_tokens=200,
         response_format={"type": "json_object"},
         messages=[{
@@ -337,39 +331,17 @@ async def validate_parsed_transaction(parsed: dict, telegram_bot) -> dict | None
 
 ### Account Mapping (`account_mapper.py`)
 
-Maps the `card_or_account` field from the LLM to the correct Firefly III account. This is configured once during initial setup.
+Maps the `card_or_account` field from the LLM to the correct Firefly III account. Configured via the `ACCOUNT_MAP` environment variable (JSON string).
 
-```python
-# Configurable via environment variable or config file
-# User should fill in their actual last-4 digits during setup
-ACCOUNT_MAP = {
-    # Credit cards → Liability accounts in Firefly III
-    "XXXX": "UOB Credit Card",       # Replace XXXX with UOB card last 4 digits
-    "YYYY": "Trust Bank Card",        # Replace YYYY with Trust card last 4 digits
-    # Add future shared credit cards here
-    
-    # Bank accounts → Asset accounts in Firefly III
-    "CCCC": "OCBC Savings",           # Replace CCCC with OCBC account identifier
-    "DDDD": "UOB Savings",            # Replace DDDD with UOB savings identifier
-    
-    # Fallbacks by bank name (used when card/account number not in email)
-    "OCBC": "OCBC Savings",
-    "UOB": "UOB Savings",
-    "Trust": "Trust Bank Card",
-}
+Built-in bank name fallbacks are always available:
+- `"OCBC"` → `"OCBC Savings"`
+- `"UOB"` → `"UOB Savings"`
+- `"Trust"` → `"Trust Card"`
+- `"Syfe"` → `"Syfe Cash"`
 
-def map_to_firefly_account(parsed: dict) -> str:
-    # Try exact card/account match first
-    hint = parsed.get("card_or_account", "")
-    if hint in ACCOUNT_MAP:
-        return ACCOUNT_MAP[hint]
-    
-    # Fallback to bank name
-    bank = parsed.get("bank", "unknown")
-    if bank in ACCOUNT_MAP:
-        return ACCOUNT_MAP[bank]
-    
-    return None  # Unknown — flag for manual review
+Card-specific mappings are set via env var:
+```bash
+ACCOUNT_MAP={"8106": "UOB Credit Card", "5678": "Trust Card", "9012": "OCBC Savings", "0001": "UOB Savings"}
 ```
 
 ### Transaction Type Routing
@@ -529,22 +501,22 @@ If user taps "Other", show the full category list as another inline keyboard.
 
 #### `/refresh`
 Triggers a full data refresh:
-1. Fetch and process new bank alert emails from Gmail
-2. Pull latest IBKR data via Flex Query
-3. Check for new Syfe emails
-4. Reply with summary: "Found X new transactions. Y categorized automatically, Z pending your review."
+1. Fetch and process new bank alert emails from Gmail (filtered by "Bank Alerts" label)
+2. Pull latest IBKR data via Flex Query API
+3. Reply with summary: "Found X new transactions. Y categorized automatically, Z pending your review."
+4. If IBKR token is expired, notify user to renew it
 
 #### `/balance`
 Query Firefly III API for all account balances and reply with formatted summary:
 ```
-💰 Account Balances
+Account Balances
 
-🏦 OCBC Savings: $3,210.00
-🏦 UOB Savings: $8,150.00
-💳 UOB Credit Card: -$890.30
-💳 Trust Bank Card: -$245.60
-📈 IBKR Portfolio: $45,200.00
-📈 Syfe Core: $8,500.00
+  Bank: OCBC Savings: $3,210.00
+  Bank: UOB Savings: $8,150.00
+  Card: UOB Credit Card: -$890.30
+  Card: Trust Card: -$245.60
+  Bank: IBKR Portfolio: $45,200.00
+  Bank: Syfe Cash: $8,500.00
 
 Net Worth: $63,924.10
 ```
@@ -565,6 +537,14 @@ Generate a monthly spending summary:
 - Breakdown by category (sorted by amount)
 - Comparison to previous month (% change)
 - Top 5 merchants by spend
+
+#### `/update <account> <balance>`
+Manually set an account balance. Creates a balance adjustment transaction in Firefly III.
+- `/update syfe 8500` — set Syfe Cash balance to $8,500
+- `/update ibkr 45200` — manually set IBKR portfolio value
+- `/update "OCBC Savings" 3210.50` — exact account name with quotes
+
+Fuzzy-matches the account name against Firefly III accounts. Useful for accounts without automatic data feeds (Syfe) or as a manual override.
 
 #### `/help`
 List all available commands and examples.
@@ -712,7 +692,7 @@ FINANCIAL DATA:
     ]
     
     response = await openai_client.chat.completions.create(
-        model="gpt-5.4-mini",
+        model="gpt-4.1-mini",
         max_tokens=500,
         messages=messages
     )
@@ -817,15 +797,14 @@ async def fetch_ibkr_flex():
 ### Accounts to Create
 
 Asset accounts:
-- OCBC Savings/Checking (SGD)
+- OCBC Savings (SGD)
 - UOB Savings (SGD)
-- IBKR Portfolio (USD/SGD)
-- Syfe Core (SGD)
-- Syfe Cash+ (SGD) — if applicable
+- IBKR Portfolio (USD/SGD) — updated automatically via Flex Query API
+- Syfe Cash (SGD) — updated manually via `/update syfe <balance>`
 
 Liability accounts:
 - UOB Credit Card (SGD)
-- Trust Bank Card (SGD)
+- Trust Card (SGD)
 - (Add future shared credit cards here as liability accounts)
 
 Revenue accounts (auto-created on first transaction):
@@ -851,10 +830,11 @@ Create these categories in Firefly III:
 - Education
 - Housing
 - Insurance
-- Investments
 - Gifts
 - Travel
 - Misc
+
+Note: No "Investments" category needed — money flowing into investment accounts (IBKR, Syfe) is tracked as transfers between accounts, not expenses.
 
 ### Auto-categorization Rules
 
@@ -875,68 +855,78 @@ Initial rules to create (the system will auto-create more over time):
 
 ## Deployment Steps
 
-### 1. Hetzner VPS Setup
+### 1. Homelab Server Setup
 
-1. Create a Hetzner Cloud account at hetzner.com
-2. Create a new server: CX22, Ubuntu 24.04, Singapore or nearest region
-3. SSH into the server: `ssh root@YOUR_SERVER_IP`
-4. Install Docker and Docker Compose:
+1. Install Docker:
    ```bash
    curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER
+   newgrp docker
    ```
-5. Point your domain (e.g., `finance.yourdomain.com`) to the server's IP address via DNS A record
-6. Clone your project repo:
+2. Install Cloudflare Tunnel:
    ```bash
-   git clone https://github.com/YOUR_REPO/finance-tracker.git
-   cd finance-tracker
+   curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+   sudo dpkg -i cloudflared.deb
+   cloudflared tunnel login
+   cloudflared tunnel create finance-tracker
    ```
-7. Copy `.env.example` to `.env` and fill in all secrets
-8. Start everything:
+3. Configure the tunnel at `/etc/cloudflared/config.yml` and install as service:
    ```bash
-   docker compose up -d
+   sudo cloudflared service install
+   sudo systemctl enable cloudflared
+   sudo systemctl start cloudflared
    ```
-9. Caddy will automatically obtain an SSL certificate via Let's Encrypt
-10. Access Firefly III at `https://finance.yourdomain.com`
+4. Add DNS route:
+   ```bash
+   cloudflared tunnel route dns finance-tracker finance.lam-lab.cc
+   ```
+5. Clone the repo:
+   ```bash
+   git clone https://github.com/isaaclhk/Finance-Tracker.git
+   cd Finance-Tracker
+   ```
+6. Create `.env` and fill in all secrets (see .env template above)
+7. Start Firefly III, configure accounts/categories/token, then start worker:
+   ```bash
+   docker compose up -d firefly
+   # ... configure Firefly III via web UI ...
+   docker compose up -d --build worker
+   ```
 
 ### Updating the app
 
 ```bash
-cd finance-tracker
+cd Finance-Tracker
 git pull
-docker compose build worker    # Rebuild worker if code changed
-docker compose pull            # Pull latest Firefly III image
-docker compose up -d           # Restart with new images
+docker compose up -d --build worker   # Rebuild worker if code changed
+docker compose pull                   # Pull latest Firefly III image
+docker compose up -d                  # Restart with new images
 ```
-
-Optionally, set up a GitHub Actions CI/CD pipeline to auto-deploy on push to main.
 
 ### Backups
 
 Set up a daily cron job to back up the SQLite database file:
 ```bash
-# Add to crontab: crontab -e
-0 3 * * * docker cp $(docker ps -qf name=firefly):/var/www/html/storage/database/database.sqlite /root/backups/firefly-$(date +\%Y\%m\%d).sqlite
+mkdir -p ~/backups
+crontab -e
+# Add:
+0 3 * * * docker cp $(docker ps -qf name=firefly):/var/www/html/storage/database/database.sqlite ~/backups/firefly-$(date +\%Y\%m\%d).sqlite && find ~/backups -name "firefly-*.sqlite" -mtime +30 -delete
 ```
 
-SQLite backups are just file copies — no special tooling needed. Keep the last 30 days. Optionally sync to a cloud storage bucket.
+### 2. Gmail Setup (Label-Based Filtering)
 
-### 2. Email Forwarding (if bank alerts go to different email accounts)
+All bank alert emails are filtered into a single Gmail label ("Bank Alerts"). The worker only reads emails with this label.
 
-If your bank alerts are sent to different email addresses, forward them all to one central Gmail account. Set up forwarding rules to silently forward and archive/hide the original so you don't get duplicate notifications.
+**Setup in the primary Gmail account:**
+1. Go to Gmail → Settings → Filters and Blocked Addresses → Create a new filter
+2. In "From", enter: `documents@ocbc.com OR Notifications@ocbc.com OR unialerts@uobgroup.com`
+3. Create filter → **Skip the Inbox** + **Apply the label: Bank Alerts**
+4. Check **Also apply filter to matching conversations**
 
-**Gmail (if bank alerts already go here):** No forwarding needed — this is your central inbox.
-
-**Outlook:** Rules → New Rule → "From: `ealerts@uob.com.sg`" → Forward to `your-central@gmail.com` AND Mark as read. You won't see any notification in Outlook.
-
-**Yahoo:** Settings → Filters → Add → "From contains `trustbank.sg`" → Forward to `your-central@gmail.com` AND Move to Trash.
-
-**Apple Mail / iCloud:** Settings → Rules → "If From contains `alerts@ocbc.com`" → Forward to `your-central@gmail.com` AND Mark as Read.
-
-**Key points:**
-- The bank still delivers to the original address (no bank settings to change)
-- The forwarding rule silently forwards and hides/archives the original
-- You only see the transaction via the Telegram bot
-- All alerts arrive in one Gmail inbox for the worker to process
+**If bank alerts go to different Gmail accounts:**
+- In each secondary Gmail: Settings → Forwarding → Forward to the primary Gmail
+- Create filters in secondary accounts: match bank senders → Forward + Mark as read
+- Forwarded emails get the "Bank Alerts" label via the filter in the primary account
 
 ### 3. Gmail API Setup
 
@@ -971,15 +961,14 @@ If your bank alerts are sent to different email addresses, forward them all to o
 3. Create accounts with **today's opening balances** (check each bank app for current balances):
 
    **Asset accounts:**
-   - OCBC Savings/Checking → opening balance: your current balance
+   - OCBC Savings → opening balance: your current balance
    - UOB Savings → opening balance: your current balance
    - IBKR Portfolio → opening balance: your current total equity
-   - Syfe Core → opening balance: your current portfolio value
-   - Syfe Cash+ → opening balance: your current balance (if applicable)
+   - Syfe Cash → opening balance: your current balance
 
    **Liability accounts:**
    - UOB Credit Card → opening balance: your current outstanding amount
-   - Trust Bank Card → opening balance: your current outstanding amount
+   - Trust Card → opening balance: your current outstanding amount
 
    When creating each account, Firefly III will ask for "Opening balance" and "Opening balance date" — set the date to today. From this point forward, every email-parsed transaction adjusts these balances automatically.
 
@@ -1036,28 +1025,27 @@ After enabling alerts, make a small test transaction on each account/card and co
 - [ ] Email contains: amount, merchant name, card/account identifier, date
 - [ ] Note the exact sender email address for each bank (needed for Gmail filtering)
 
-**Expected sender addresses (verify against your actual emails):**
-| Bank | Likely sender address |
-|------|----------------------|
-| OCBC | `alerts@ocbc.com` or `donotreply@ocbc.com` |
-| UOB | `ealerts@uob.com.sg` or similar |
-| Trust | TBD — check actual email |
+**Confirmed sender addresses:**
+| Bank | Sender address |
+|------|---------------|
+| OCBC | `documents@ocbc.com`, `Notifications@ocbc.com` |
+| UOB | `unialerts@uobgroup.com` |
+| Trust | TBD — verify actual sender address |
 
-Store confirmed sender addresses in the worker's config as `BANK_SENDER_ADDRESSES`.
+These are used in Gmail filters to label emails as "Bank Alerts". The worker itself filters by label, not by sender.
 
 ---
 
 ## Security Considerations
 
-- All secrets are stored in `.env` on the VPS — never commit this file to git. Add `.env` to `.gitignore`.
-- The Gmail API OAuth token grants read access to the user's inbox. Store securely in `.env`.
+- All secrets are stored in `.env` on the server — never commit this file to git. Add `.env` to `.gitignore`.
+- The Gmail API OAuth token grants read-only access to the user's inbox. Store securely in `.env`.
 - Firefly III Personal Access Token should be treated as a secret.
-- IBKR Flex Token provides read-only access to account reports, but should still be secured.
-- Telegram bot only responds in the configured `TELEGRAM_CHAT_ID` group. All other messages should be ignored silently.
-- Caddy provides automatic HTTPS via Let's Encrypt — Firefly III is never exposed over plain HTTP.
-- Firefly III and its SQLite database are not exposed to the internet directly — only Caddy's ports (80/443) are public. Services communicate internally via Docker networking.
-- Set up UFW firewall on the VPS: allow only ports 22 (SSH), 80 (HTTP → redirects to HTTPS), and 443 (HTTPS).
-- Use SSH key authentication and disable password login on the VPS.
+- IBKR Flex Token provides read-only access to account reports (~1 year expiry). The bot notifies via Telegram when it expires.
+- Telegram bot only responds in the configured `TELEGRAM_CHAT_ID` group. All other messages are ignored silently.
+- Cloudflare Tunnel handles HTTPS — Firefly III is only exposed on `127.0.0.1:8080` (localhost), never directly to the internet.
+- No ports are opened on the server — Cloudflare Tunnel uses outbound connections only.
+- Do not open `.env` in an IDE during Claude Code sessions — the IDE may send file contents to the chat, exposing secrets.
 
 ---
 
@@ -1065,15 +1053,15 @@ Store confirmed sender addresses in the worker's config as `BANK_SENDER_ADDRESSE
 
 | Item | Monthly Cost |
 |------|-------------|
-| Hetzner VPS (CX22) | ~€3.29 (~$3.50) |
-| Domain name (if you don't have one) | ~$1 (annual, amortized) |
-| GPT-5.4 nano (parsing + categorization) | ~$0.01-0.05 |
-| GPT-5.4 mini (queries) | ~$1-4 (depends on usage) |
+| Homelab server | $0 (already owned) |
+| Cloudflare Tunnel | Free |
+| Domain name | ~$1 (annual, amortized) |
+| GPT-4.1 nano (parsing + categorization) | ~$0.01-0.05 |
+| GPT-4.1 mini (queries) | ~$1-4 (depends on usage) |
 | Gmail API | Free |
 | Telegram Bot API | Free |
 | IBKR Flex Queries | Free |
-| Let's Encrypt SSL | Free |
-| **Total** | **~$5-8/month** |
+| **Total** | **~$1-5/month** |
 
 ---
 
