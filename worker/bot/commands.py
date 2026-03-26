@@ -119,7 +119,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if last_activity:
             try:
                 dt = date.fromisoformat(last_activity[:10])
-                date_str = f" ({dt.strftime('%d %b')})"
+                date_str = f" ({dt.strftime('%d %b %Y')})"
             except ValueError:
                 pass
 
