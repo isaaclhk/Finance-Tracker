@@ -8,7 +8,7 @@ from worker.config import IBKR_FLEX_QUERY_ID, IBKR_FLEX_TOKEN
 
 logger = logging.getLogger(__name__)
 
-FLEX_BASE_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexStatementService"
+FLEX_BASE_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService"
 
 
 def _parse_reference_code(xml_text: str) -> str | None:
