@@ -9,6 +9,7 @@ ACCOUNT_MAP: dict[str, str] = {
     "OCBC": "OCBC Savings",
     "UOB": "UOB Savings",
     "Trust": "Trust Bank Card",
+    "Syfe": "Syfe Cash",
 }
 
 # Maps transaction_type -> (firefly_type, source_role, dest_role)
