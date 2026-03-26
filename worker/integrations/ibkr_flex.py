@@ -34,7 +34,12 @@ def _parse_flex_xml(xml_text: str) -> dict:
     try:
         root = ET.fromstring(xml_text)
 
+        # Log all top-level element tags for debugging
+        all_tags = {elem.tag for elem in root.iter()}
+        logger.info("IBKR XML elements found: %s", all_tags)
+
         for eq in root.iter("EquitySummaryInBase"):
+            logger.info("EquitySummaryInBase attributes: %s", eq.attrib)
             total = eq.get("totalLong", "0")
             result["total_equity"] = float(total)
             break
