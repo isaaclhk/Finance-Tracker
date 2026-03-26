@@ -23,6 +23,9 @@ IBKR_FLEX_TOKEN = os.getenv("IBKR_FLEX_TOKEN", "")
 IBKR_FLEX_QUERY_ID = os.getenv("IBKR_FLEX_QUERY_ID", "")
 IBKR_EMAIL_SENDER = os.getenv("IBKR_EMAIL_SENDER", "donotreply@interactivebrokers.com")
 
+# Account mapping (JSON string: {"1234": "UOB Credit Card", "5678": "OCBC Savings", ...})
+ACCOUNT_MAP_JSON = os.getenv("ACCOUNT_MAP", "")
+
 # Validation thresholds
 VALIDATION_LARGE_AMOUNT_THRESHOLD = float(os.getenv("VALIDATION_LARGE_AMOUNT_THRESHOLD", "5000"))
 VALIDATION_SMALL_AMOUNT_MIN = float(os.getenv("VALIDATION_SMALL_AMOUNT_MIN", "0.01"))

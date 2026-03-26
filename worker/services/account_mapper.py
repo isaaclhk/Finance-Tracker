@@ -1,19 +1,32 @@
-ACCOUNT_MAP: dict[str, str] = {
-    # Credit cards → Liability accounts (replace XXXX with real last 4 digits)
-    # "XXXX": "UOB Credit Card",
-    # "YYYY": "Trust Bank Card",
-    # Bank accounts → Asset accounts
-    # "CCCC": "OCBC Savings",
-    # "DDDD": "UOB Savings",
-    # Fallbacks by bank name
+import json
+import logging
+
+from worker.config import ACCOUNT_MAP_JSON
+
+logger = logging.getLogger(__name__)
+
+# Bank name fallbacks (always available)
+_BANK_FALLBACKS: dict[str, str] = {
     "OCBC": "OCBC Savings",
     "UOB": "UOB Savings",
     "Trust": "Trust Bank Card",
     "Syfe": "Syfe Cash",
 }
 
+
+def _load_account_map() -> dict[str, str]:
+    custom: dict[str, str] = {}
+    if ACCOUNT_MAP_JSON:
+        try:
+            custom = json.loads(ACCOUNT_MAP_JSON)
+        except json.JSONDecodeError:
+            logger.error("Invalid ACCOUNT_MAP JSON in env var")
+    return {**_BANK_FALLBACKS, **custom}
+
+
+ACCOUNT_MAP = _load_account_map()
+
 # Maps transaction_type -> (firefly_type, source_role, dest_role)
-# source_role/dest_role: "asset", "liability", "expense", "revenue"
 TRANSACTION_TYPE_MAP: dict[str, tuple[str, str, str]] = {
     "card_spending": ("withdrawal", "liability", "expense"),
     "fund_transfer": ("transfer", "asset", "asset"),
