@@ -40,8 +40,19 @@ def _parse_flex_xml(xml_text: str) -> dict:
 
         for eq in root.iter("EquitySummaryInBase"):
             logger.info("EquitySummaryInBase attributes: %s", eq.attrib)
-            total = eq.get("totalLong", "0")
-            result["total_equity"] = float(total)
+            logger.info("EquitySummaryInBase children: %s", [
+                (child.tag, child.attrib) for child in eq
+            ])
+            # Try attribute first, then child elements
+            total = eq.get("totalLong") or eq.get("total")
+            if total is None:
+                for child in eq:
+                    if "total" in child.tag.lower() or "long" in child.tag.lower():
+                        total = child.get("total") or child.get("totalLong") or child.text
+                        logger.info("Found total in child %s: %s", child.tag, total)
+                        break
+            if total:
+                result["total_equity"] = float(total)
             break
 
         for pos in root.iter("OpenPosition"):
