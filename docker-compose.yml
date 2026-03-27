@@ -17,7 +17,9 @@ services:
       TZ: Asia/Singapore
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
     restart: unless-stopped
     depends_on:
       firefly:
