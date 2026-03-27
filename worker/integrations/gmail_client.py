@@ -99,14 +99,14 @@ def _extract_attachments(service, message_id: str, payload: dict) -> list[dict]:
     return attachments
 
 
-async def fetch_new_alerts() -> list[Email]:
+async def fetch_new_alerts() -> tuple[list[Email], str | None]:
     service = _build_service()
     cursor = _load_cursor()
 
     label_id = _get_label_id(service)
     if not label_id:
         logger.error("Gmail label '%s' not found", GMAIL_LABEL)
-        return []
+        return [], None
 
     query = ""
     if cursor:
@@ -118,11 +118,11 @@ async def fetch_new_alerts() -> list[Email]:
         )
     except Exception:
         logger.exception("Failed to list Gmail messages")
-        return []
+        return [], None
 
     messages = results.get("messages", [])
     if not messages:
-        return []
+        return [], None
 
     emails: list[Email] = []
     latest_timestamp = cursor
