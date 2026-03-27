@@ -1,5 +1,6 @@
 import logging
 from datetime import date, timedelta
+from decimal import Decimal
 
 from worker.integrations import firefly_client
 
@@ -24,17 +25,18 @@ async def is_duplicate(parsed: dict, start_date: date | None = None) -> bool:
         logger.exception("Failed to check for duplicates")
         return False
 
-    amount = parsed.get("amount", 0)
+    amount = Decimal(str(parsed.get("amount", 0)))
     merchant = (parsed.get("merchant") or "").lower()
 
     for txn in existing:
         attrs = txn.get("attributes", {})
         transactions = attrs.get("transactions", [])
         for t in transactions:
-            existing_amount = float(t.get("amount", 0))
+            existing_amount = Decimal(str(t.get("amount", 0)))
             existing_desc = (t.get("description") or "").lower()
 
-            if abs(existing_amount - amount) < 0.01 and merchant and merchant in existing_desc:
+            amounts_match = abs(existing_amount - amount) < Decimal("0.01")
+            if amounts_match and merchant and merchant in existing_desc:
                 return True
 
     return False

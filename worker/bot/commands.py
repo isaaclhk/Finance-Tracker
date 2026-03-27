@@ -2,6 +2,7 @@ import calendar
 import logging
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -43,10 +44,11 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
         return None
 
     acct_name = matched["attributes"]["name"]
-    current = float(matched["attributes"].get("current_balance", 0))
-    diff = new_balance - current
+    current = Decimal(str(matched["attributes"].get("current_balance", 0)))
+    target = Decimal(str(new_balance))
+    diff = target - current
 
-    if abs(diff) < 0.01:
+    if abs(diff) < Decimal("0.01"):
         return None
 
     # Use transfer so it doesn't count as income/expense
@@ -73,7 +75,7 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
 
     try:
         await firefly_client.create_transaction(payload)
-        return f"{acct_name}: ${current:,.2f} → ${new_balance:,.2f}"
+        return f"{acct_name}: ${current:,.2f} → ${target:,.2f}"
     except Exception:
         return None
 
@@ -108,17 +110,17 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
-async def _get_account_data() -> tuple[list[tuple], list[tuple], float]:
+async def _get_account_data() -> tuple[list[tuple], list[tuple], Decimal]:
     accounts = await firefly_client.get_accounts()
     assets = []
     liabilities = []
-    total = 0.0
+    total = Decimal("0")
 
     for acct in accounts:
         attrs = acct.get("attributes", {})
         name = attrs.get("name", "Unknown")
         acct_type = attrs.get("type", "")
-        balance = float(attrs.get("current_balance", 0))
+        balance = Decimal(str(attrs.get("current_balance", 0)))
         last_activity = attrs.get("last_activity") or attrs.get("updated_at", "")
 
         date_str = ""
@@ -317,7 +319,7 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Failed to fetch transactions.")
         return
 
-    total = 0.0
+    total = Decimal("0")
     items = []
 
     for txn in txns:
@@ -330,7 +332,7 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if category_filter and category_filter.lower() not in cat:
                 continue
 
-            amount = float(t.get("amount", 0))
+            amount = Decimal(str(t.get("amount", 0)))
             desc = t.get("description", "Unknown")
             total += amount
             items.append(f"  ${amount:,.2f} · {desc}")
@@ -381,22 +383,22 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     def _summarize(txn_list):
-        by_category = {}
-        by_merchant = {}
-        total_expense = 0.0
-        total_income = 0.0
+        by_category: dict[str, Decimal] = {}
+        by_merchant: dict[str, Decimal] = {}
+        total_expense = Decimal("0")
+        total_income = Decimal("0")
 
         for txn in txn_list:
             for t in txn.get("attributes", {}).get("transactions", []):
-                amount = float(t.get("amount", 0))
+                amount = Decimal(str(t.get("amount", 0)))
                 desc = t.get("description", "Unknown")
                 cat = t.get("category_name") or "Uncategorized"
                 txn_type = t.get("type", "")
 
                 if txn_type == "withdrawal":
                     total_expense += amount
-                    by_category[cat] = by_category.get(cat, 0) + amount
-                    by_merchant[desc] = by_merchant.get(desc, 0) + amount
+                    by_category[cat] = by_category.get(cat, Decimal("0")) + amount
+                    by_merchant[desc] = by_merchant.get(desc, Decimal("0")) + amount
                 elif txn_type == "deposit":
                     total_income += amount
 
@@ -416,7 +418,7 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     if expense_prev > 0:
-        change = ((expense - expense_prev) / expense_prev) * 100
+        change = float((expense - expense_prev) / expense_prev * 100)
         arrow = "⬆️" if change > 0 else "⬇️"
         lines.append(f"\n{arrow} vs previous period: <b>{abs(change):.0f}%</b>")
 
