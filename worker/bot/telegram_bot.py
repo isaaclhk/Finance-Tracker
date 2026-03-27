@@ -79,10 +79,10 @@ async def notify_parse_failure(parsed: dict):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", "?")
     await send_message(
-        f"⚠️ Aiyo, cannot read this one\n"
+        f"⚠️ Could not parse this transaction\n"
         f"──────────\n"
         f"🏪 {merchant} · <b>${amount}</b>\n\n"
-        f"Check the email manually lah",
+        f"Please check the email manually.",
         parse_mode="HTML",
     )
 
@@ -93,11 +93,11 @@ async def notify_unknown_account(parsed: dict):
     merchant = parsed.get("merchant", "?")
     amount = parsed.get("amount", "?")
     await send_message(
-        f"❓ Eh, which account is this?\n"
+        f"❓ Unknown account\n"
         f"──────────\n"
         f"💳 Card *{card} ({bank})\n"
         f"🏪 {merchant} · <b>${amount}</b>\n\n"
-        f"Add this card to ACCOUNT_MAP in .env",
+        f"Please add this card to ACCOUNT_MAP in .env",
         parse_mode="HTML",
     )
 
@@ -106,7 +106,7 @@ async def send_large_amount_confirmation(parsed: dict):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", 0)
     await send_message(
-        f"💰 Wah, big purchase sia!\n──────────\n🏪 {merchant}\n💵 <b>${amount:,.2f}</b>",
+        f"💰 Large transaction\n──────────\n🏪 {merchant}\n💵 <b>${amount:,.2f}</b>",
         parse_mode="HTML",
     )
 
@@ -129,13 +129,13 @@ async def ask_category_confirmation(
     time_str = f" {txn_time}" if txn_time else ""
 
     text = (
-        f"<b>🆕 New merchant ah!</b>\n"
+        f"<b>🆕 New merchant</b>\n"
         f"──────────\n"
         f"🏪 {merchant}\n"
         f"💵 <b>${amount:,.2f}</b> · {bank} *{card}\n"
         f"📅 {txn_date}{time_str}\n"
         f"──────────\n"
-        f"💡 I think is: <b>{suggested_category or 'not sure leh'}</b>"
+        f"💡 Suggested: <b>{suggested_category or 'Unsure'}</b>"
     )
 
     buttons = []

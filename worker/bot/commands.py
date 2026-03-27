@@ -379,6 +379,6 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - This message\n"
         "\n"
         "──────────\n"
-        "Or just ask me anything lah!",
+        "Or just ask me anything!",
         parse_mode="HTML",
     )
