@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
 from telegram import Update
@@ -25,7 +25,7 @@ _ibkr_task: asyncio.Task | None = None
 _last_poll: datetime | None = None
 _total_processed: int = 0
 
-IBKR_POLL_INTERVAL_SECONDS = 24 * 60 * 60  # once a day
+IBKR_UPDATE_HOUR = 7  # 7am SGT
 
 
 async def _poll_loop():
@@ -62,8 +62,20 @@ async def _poll_loop():
         await asyncio.sleep(POLL_INTERVAL_MINUTES * 60)
 
 
+def _seconds_until_next(hour: int) -> float:
+    now = datetime.now()
+    target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
+
+
 async def _ibkr_daily_loop():
     while True:
+        wait = _seconds_until_next(IBKR_UPDATE_HOUR)
+        logger.info("Next IBKR update in %.0f hours", wait / 3600)
+        await asyncio.sleep(wait)
+
         try:
             ibkr_data = await ibkr_flex.fetch_ibkr_data()
             if ibkr_data and ibkr_data["total_equity"] > 0:
@@ -76,8 +88,6 @@ async def _ibkr_daily_loop():
             await send_message(f"⚠️ IBKR token expired: {e}\nPlease renew at IBKR Client Portal.")
         except Exception:
             logger.exception("Error in IBKR daily loop")
-
-        await asyncio.sleep(IBKR_POLL_INTERVAL_SECONDS)
 
 
 @asynccontextmanager
