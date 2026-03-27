@@ -80,11 +80,16 @@ async def _apply_category(query, txn_id: str, category: str):
         return
 
     # Extract merchant from original message for auto-rule
+    # Message format: line 0 = header, line 1 = separator, line 2 = "🏪 MERCHANT"
     original_text = query.message.text or ""
     lines = original_text.split("\n")
-    merchant = lines[2] if len(lines) > 2 else ""
+    merchant = ""
+    for line in lines:
+        if line.startswith("🏪"):
+            merchant = line.replace("🏪", "").strip()
+            break
 
     if merchant:
-        await create_auto_rule(merchant.strip(), category)
+        await create_auto_rule(merchant, category)
 
     await query.edit_message_text(f"{original_text}\n\n✅ Ok, tagged as {category}!")

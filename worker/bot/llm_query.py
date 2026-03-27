@@ -50,7 +50,7 @@ async def handle_natural_query(update: Update, context: ContextTypes.DEFAULT_TYP
     # Reset history if inactive
     if chat_id in last_activity:
         if now - last_activity[chat_id] > timedelta(minutes=CONVERSATION_TIMEOUT_MINUTES):
-            conversation_histories[chat_id] = []
+            conversation_histories.pop(chat_id, None)
     last_activity[chat_id] = now
 
     # Fetch financial data

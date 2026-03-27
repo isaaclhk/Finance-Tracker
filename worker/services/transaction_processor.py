@@ -41,8 +41,10 @@ def _build_firefly_payload(validated: dict, source_account: str) -> dict:
         txn["destination_name"] = source_account
 
     if firefly_type == "transfer":
-        txn["destination_name"] = source_account
+        # For bill_payment: source is bank account, destination is credit card (merchant name)
+        # For fund_transfer: source is bank account, destination is the recipient
         txn["source_name"] = source_account
+        txn["destination_name"] = merchant
 
     return {"transactions": [txn]}
 
@@ -51,7 +53,7 @@ async def process_new_emails() -> ProcessResult:
     result = ProcessResult()
 
     try:
-        emails = await gmail_client.fetch_new_alerts()
+        emails, latest_cursor = await gmail_client.fetch_new_alerts()
     except Exception:
         logger.exception("Failed to fetch emails")
         result.errors += 1
@@ -107,5 +109,9 @@ async def process_new_emails() -> ProcessResult:
         except Exception:
             logger.exception("Failed to process email %s", email.message_id)
             result.errors += 1
+
+    # Save cursor only after all emails are processed
+    if latest_cursor:
+        gmail_client.save_cursor(latest_cursor)
 
     return result

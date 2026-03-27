@@ -71,7 +71,7 @@ async def test_process_new_emails_success():
         patch(
             "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
             new_callable=AsyncMock,
-            return_value=[email],
+            return_value=([email], None),
         ),
         patch(
             "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
@@ -121,7 +121,7 @@ async def test_process_skips_duplicates():
         patch(
             "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
             new_callable=AsyncMock,
-            return_value=[email],
+            return_value=([email], None),
         ),
         patch(
             "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",

@@ -148,9 +148,9 @@ async def health() -> dict:
 
     # Email polling should happen every POLL_INTERVAL_MINUTES
     # Allow 2x the interval as grace period; None means just started
-    email_healthy = _last_poll is None or (
-        now - _last_poll
-    ).total_seconds() < POLL_INTERVAL_MINUTES * 60 * 2
+    email_healthy = (
+        _last_poll is None or (now - _last_poll).total_seconds() < POLL_INTERVAL_MINUTES * 60 * 2
+    )
 
     # If we've never received a Telegram update, that's fine (no one has messaged yet)
     # But if we did receive one before and it's been >30 min, polling might be dead
@@ -168,8 +168,11 @@ async def health() -> dict:
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request) -> dict:
-    telegram_app = get_application()
-    data = await request.json()
-    update = Update.de_json(data, telegram_app.bot)
-    await telegram_app.process_update(update)
+    try:
+        telegram_app = get_application()
+        data = await request.json()
+        update = Update.de_json(data, telegram_app.bot)
+        await telegram_app.process_update(update)
+    except Exception:
+        logger.exception("Failed to process Telegram webhook")
     return {"ok": True}

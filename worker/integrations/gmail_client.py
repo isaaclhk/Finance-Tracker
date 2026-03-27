@@ -43,7 +43,7 @@ def _load_cursor() -> str | None:
         return None
 
 
-def _save_cursor(timestamp: str):
+def save_cursor(timestamp: str):
     os.makedirs(os.path.dirname(CURSOR_FILE), exist_ok=True)
     with open(CURSOR_FILE, "w") as f:
         json.dump({"last_timestamp": timestamp}, f)
@@ -165,7 +165,4 @@ async def fetch_new_alerts() -> list[Email]:
             logger.exception("Failed to fetch message %s", msg_ref["id"])
             continue
 
-    if latest_timestamp and latest_timestamp != cursor:
-        _save_cursor(latest_timestamp)
-
-    return emails
+    return emails, latest_timestamp
