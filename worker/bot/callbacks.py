@@ -87,4 +87,4 @@ async def _apply_category(query, txn_id: str, category: str):
     if merchant:
         await create_auto_rule(merchant.strip(), category)
 
-    await query.edit_message_text(f"{original_text}\n\nCategorized as {category}. Rule created.")
+    await query.edit_message_text(f"{original_text}\n\n✅ Ok, tagged as {category}!")

@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
     _poll_task = asyncio.create_task(_poll_loop())
     logger.info("Email polling started (every %d minutes)", POLL_INTERVAL_MINUTES)
 
-    await send_message("Finance tracker worker started.")
+    await send_message("👋 Mdm Huat is here! Ready to track your money ah.")
 
     yield
 

@@ -82,7 +82,7 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
 
 
 async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Refreshing...")
+    await update.message.reply_text("🔄  Checking...")
 
     result = await process_new_emails()
 
@@ -92,22 +92,24 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ibkr_data and ibkr_data["total_equity"] > 0:
             updated = await _update_account_balance("IBKR", ibkr_data["total_equity"])
             if updated:
-                ibkr_msg = f"\nIBKR updated: {updated}"
+                ibkr_msg = f"\n📈  IBKR: {updated}"
             else:
-                ibkr_msg = f"\nIBKR portfolio: ${ibkr_data['total_equity']:,.2f} (no change)"
+                ibkr_msg = f"\n📈  IBKR: ${ibkr_data['total_equity']:,.2f} (no change)"
     except ibkr_flex.IBKRTokenError as e:
-        ibkr_msg = f"\nIBKR token expired or invalid: {e}\nPlease renew at IBKR Client Portal."
+        ibkr_msg = f"\n⚠️  IBKR token expired: {e}"
 
-    msg = (
-        f"Found {result.new_count} new transaction(s). "
-        f"{result.auto_categorized} categorized automatically, "
-        f"{len(result.pending_review)} pending review."
-    )
+    lines = ["✅  Done!"]
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append(f"📬  {result.new_count} new transaction(s)")
+    lines.append(f"🏷️  {result.auto_categorized} auto-categorized")
+    if result.pending_review:
+        lines.append(f"👆  {len(result.pending_review)} need your input")
     if result.errors:
-        msg += f"\n{result.errors} error(s) encountered."
-    msg += ibkr_msg
+        lines.append(f"⚠️  {result.errors} error(s)")
+    if ibkr_msg:
+        lines.append(ibkr_msg)
 
-    await update.message.reply_text(msg)
+    await update.message.reply_text("\n".join(lines))
 
 
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -117,8 +119,11 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Failed to fetch account balances.")
         return
 
-    lines = ["Account Balances\n"]
+    lines = ["💰  Account Balances", "━━━━━━━━━━━━━━━━━━"]
     total = 0.0
+
+    assets = []
+    liabilities = []
 
     for acct in accounts:
         attrs = acct.get("attributes", {})
@@ -127,27 +132,37 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance = float(attrs.get("current_balance", 0))
         last_activity = attrs.get("last_activity") or attrs.get("updated_at", "")
 
-        # Format date: "2026-03-27T10:30:00+08:00" → "27 Mar"
         date_str = ""
         if last_activity:
             try:
                 dt = date.fromisoformat(last_activity[:10])
-                date_str = f" ({dt.strftime('%d %b %Y')})"
+                date_str = f"  · {dt.strftime('%d %b %Y')}"
             except ValueError:
                 pass
 
         if acct_type == "asset":
-            icon = "Bank"
+            assets.append((name, balance, date_str))
+            total += balance
         elif acct_type == "liability":
-            icon = "Card"
             balance = -abs(balance)
-        else:
-            continue
+            liabilities.append((name, balance, date_str))
+            total += balance
 
-        lines.append(f"  {icon}: {name}: ${balance:,.2f}{date_str}")
-        total += balance
+    if assets:
+        lines.append("")
+        lines.append("🏦  Savings & Investments")
+        for name, bal, ds in assets:
+            lines.append(f"     {name}: ${bal:,.2f}{ds}")
 
-    lines.append(f"\nNet Worth: ${total:,.2f}")
+    if liabilities:
+        lines.append("")
+        lines.append("💳  Cards")
+        for name, bal, ds in liabilities:
+            lines.append(f"     {name}: ${bal:,.2f}{ds}")
+
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append(f"📊  Net Worth: ${total:,.2f}")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -213,19 +228,23 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amount = float(t.get("amount", 0))
             desc = t.get("description", "Unknown")
             total += amount
-            items.append(f"  ${amount:,.2f} — {desc}")
+            items.append(f"     ${amount:,.2f}  ·  {desc}")
 
-    header = f"Spending {period_label}"
+    header = f"🧾  Spending — {period_label}"
     if category_filter:
         header += f" ({category_filter})"
-    header += f": ${total:,.2f}\n"
+    header += "\n━━━━━━━━━━━━━━━━━━"
 
     if items:
-        msg = header + "\n".join(items[:20])
-        if len(items) > 20:
-            msg += f"\n... and {len(items) - 20} more"
+        lines = [header, ""]
+        lines.extend(items[:15])
+        if len(items) > 15:
+            lines.append(f"\n     ... and {len(items) - 15} more")
+        lines.append("\n━━━━━━━━━━━━━━━━━━")
+        lines.append(f"💵  Total: ${total:,.2f}")
+        msg = "\n".join(lines)
     else:
-        msg = header + "No transactions found."
+        msg = f"{header}\n\nNo transactions found."
 
     await update.message.reply_text(msg)
 
@@ -271,26 +290,34 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     income_this, expense_this, cats_this, merchants_this = _summarize(this_month)
     _, expense_last, _, _ = _summarize(last_month)
 
-    lines = [f"Monthly Summary ({start_this.strftime('%B %Y')})\n"]
-    lines.append(f"Income: ${income_this:,.2f}")
-    lines.append(f"Expenses: ${expense_this:,.2f}")
-    lines.append(f"Net: ${income_this - expense_this:,.2f}\n")
+    net = income_this - expense_this
+    lines = [
+        f"📊  Monthly Summary — {start_this.strftime('%B %Y')}",
+        "━━━━━━━━━━━━━━━━━━",
+        "",
+        f"📥  Income:    ${income_this:,.2f}",
+        f"📤  Expenses:  ${expense_this:,.2f}",
+        f"{'📈' if net >= 0 else '📉'}  Net:       ${net:,.2f}",
+    ]
 
     if expense_last > 0:
         change = ((expense_this - expense_last) / expense_last) * 100
-        direction = "up" if change > 0 else "down"
-        lines.append(f"vs last month: {direction} {abs(change):.0f}%\n")
+        arrow = "⬆️" if change > 0 else "⬇️"
+        lines.append(f"\n{arrow}  vs last month: {abs(change):.0f}%")
 
     sorted_cats = sorted(cats_this.items(), key=lambda x: x[1], reverse=True)
-    lines.append("By category:")
-    for cat, amount in sorted_cats[:10]:
-        lines.append(f"  {cat}: ${amount:,.2f}")
+    if sorted_cats:
+        lines.append("\n🏷️  By Category")
+        lines.append("━━━━━━━━━━━━━━━━━━")
+        for cat, amount in sorted_cats[:10]:
+            lines.append(f"     {cat}: ${amount:,.2f}")
 
     sorted_merchants = sorted(merchants_this.items(), key=lambda x: x[1], reverse=True)
     if sorted_merchants:
-        lines.append("\nTop merchants:")
+        lines.append("\n🏪  Top Merchants")
+        lines.append("━━━━━━━━━━━━━━━━━━")
         for merchant, amount in sorted_merchants[:5]:
-            lines.append(f"  {merchant}: ${amount:,.2f}")
+            lines.append(f"     {merchant}: ${amount:,.2f}")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -317,23 +344,32 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await _update_account_balance(account_name, balance)
 
     if result:
-        await update.message.reply_text(f"Updated {result}")
+        await update.message.reply_text(f"✅  Updated {result}")
     else:
         await update.message.reply_text(
-            f"Could not update '{account_name}'. Account not found or balance unchanged."
+            f"❌  Cannot update '{account_name}'\nAccount not found or balance unchanged."
         )
 
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Available commands:\n\n"
-        "/refresh — Fetch new transactions from email\n"
-        "/balance — Show all account balances\n"
-        "/spent [period] [category] — Show spending\n"
-        "  Examples: /spent today, /spent this month food\n"
-        "/summary — Monthly spending summary\n"
-        "/update <account> <balance> — Manually set account balance\n"
-        "  Examples: /update syfe 8500, /update ibkr 45200\n"
-        "/help — Show this message\n\n"
-        "Or just ask me anything about your finances!"
+        "👋  Hello! I'm Mdm Huat\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🔄  /refresh\n"
+        "     Fetch new transactions\n\n"
+        "💰  /balance\n"
+        "     Show account balances\n\n"
+        "🧾  /spent [period] [category]\n"
+        "     Show spending\n"
+        "     e.g. /spent today\n"
+        "     e.g. /spent this month food\n\n"
+        "📊  /summary\n"
+        "     Monthly spending summary\n\n"
+        "✏️  /update <account> <amount>\n"
+        "     Manually set balance\n"
+        "     e.g. /update syfe 8500\n\n"
+        "❓  /help\n"
+        "     This message\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Or just ask me anything lah!"
     )

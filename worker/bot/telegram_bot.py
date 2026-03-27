@@ -76,7 +76,12 @@ async def send_message(text: str, **kwargs):
 async def notify_parse_failure(parsed: dict):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", "?")
-    await send_message(f"Failed to parse transaction: {merchant} ${amount}")
+    await send_message(
+        f"⚠️  Aiyo, cannot read this one\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🏪  {merchant}  ·  ${amount}\n\n"
+        f"Check the email manually lah"
+    )
 
 
 async def notify_unknown_account(parsed: dict):
@@ -85,22 +90,28 @@ async def notify_unknown_account(parsed: dict):
     merchant = parsed.get("merchant", "?")
     amount = parsed.get("amount", "?")
     await send_message(
-        f"Unknown account: card/account {card} ({bank})\n"
-        f"Transaction: {merchant} ${amount}\n"
-        f"Please add this card to the account map."
+        f"❓  Eh, which account is this?\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💳  Card *{card}  ({bank})\n"
+        f"🏪  {merchant}  ·  ${amount}\n\n"
+        f"Add this card to ACCOUNT_MAP in .env"
     )
 
 
 async def send_large_amount_confirmation(parsed: dict):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", 0)
-    await send_message(f"Large transaction detected: ${amount:,.2f} at {merchant}")
+    await send_message(
+        f"💰  Wah, big purchase sia!\n━━━━━━━━━━━━━━━━━━\n🏪  {merchant}\n💵  ${amount:,.2f}"
+    )
 
 
 async def ask_category_confirmation(
     transaction: dict, suggested_category: str | None, parsed: dict
 ):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from worker.bot.callbacks import CODE_BY_NAME
 
     txn_id = transaction.get("id", "0")
     merchant = parsed.get("merchant", "Unknown")
@@ -110,26 +121,28 @@ async def ask_category_confirmation(
     txn_date = parsed.get("date", "")
     txn_time = parsed.get("time", "")
 
-    time_str = f", {txn_time}" if txn_time else ""
+    time_str = f" {txn_time}" if txn_time else ""
 
     text = (
-        f"New merchant detected\n\n"
-        f"{merchant}\n"
-        f"SGD {amount:,.2f} — {bank} *{card}\n"
-        f"{txn_date}{time_str}\n\n"
-        f"Suggested: {suggested_category or 'Unknown'}"
+        f"🆕  New merchant ah!\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🏪  {merchant}\n"
+        f"💵  ${amount:,.2f}  ·  {bank} *{card}\n"
+        f"📅  {txn_date}{time_str}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💡  I think this one is: {suggested_category or 'not sure leh'}"
     )
 
-    from worker.bot.callbacks import CATEGORY_CODES
-
     buttons = []
-    row = []
-    for code, name in CATEGORY_CODES.items():
-        row.append(InlineKeyboardButton(name, callback_data=f"cat:{txn_id}:{code}"))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
+    if suggested_category and suggested_category in CODE_BY_NAME:
+        code = CODE_BY_NAME[suggested_category]
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    f"✅ Yes, {suggested_category}", callback_data=f"cat:{txn_id}:{code}"
+                )
+            ]
+        )
+    buttons.append([InlineKeyboardButton("📋 Pick another", callback_data=f"cat:{txn_id}:OTHER")])
 
     await send_message(text, reply_markup=InlineKeyboardMarkup(buttons))
