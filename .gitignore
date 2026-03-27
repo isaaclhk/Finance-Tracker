@@ -24,6 +24,9 @@ docker-compose.override.yml
 *.swo
 *~
 
+# Claude
+CLAUDE.md
+
 # OS
 .DS_Store
 Thumbs.db
