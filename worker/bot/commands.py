@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from worker.integrations import firefly_client, ibkr_flex
+from worker.services import salary
 from worker.services.transaction_processor import process_new_emails
 
 logger = logging.getLogger(__name__)
@@ -468,6 +469,150 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /income <amount> <source> [account]\n"
+            "Examples:\n"
+            "  /income 5000 Salary\n"
+            "  /income 2000 Bonus\n"
+            "  /income 200 Interest ocbc"
+        )
+        return
+
+    try:
+        amount = Decimal(args[0])
+    except Exception:
+        await update.message.reply_text("Invalid amount. Must be a number.")
+        return
+
+    # If last arg looks like an account name (>2 args), use it
+    if len(args) > 2:
+        source = " ".join(args[1:-1])
+        account_name = args[-1]
+        # Check if last arg is actually an account
+        try:
+            accounts = await firefly_client.get_accounts()
+            matched = None
+            for acct in accounts:
+                attrs = acct.get("attributes", {})
+                if attrs.get("type") not in ("asset", "liability"):
+                    continue
+                name = attrs.get("name", "")
+                if account_name.lower() in name.lower():
+                    matched = name
+                    break
+            if not matched:
+                # Last arg is part of source name, not an account
+                source = " ".join(args[1:])
+                matched = salary.DEFAULT_ACCOUNT
+        except Exception:
+            source = " ".join(args[1:])
+            matched = salary.DEFAULT_ACCOUNT
+    else:
+        source = " ".join(args[1:])
+        matched = salary.DEFAULT_ACCOUNT
+
+    payload = {
+        "transactions": [
+            {
+                "type": "deposit",
+                "date": date.today().isoformat(),
+                "amount": str(amount),
+                "description": source,
+                "source_name": source,
+                "destination_name": matched,
+            }
+        ]
+    }
+
+    try:
+        await firefly_client.create_transaction(payload)
+        await update.message.reply_text(
+            f"✅ <b>${amount:,.2f}</b> from {source}\n→ {matched}",
+            parse_mode="HTML",
+        )
+    except Exception:
+        await update.message.reply_text("❌ Failed to record income.")
+
+
+async def handle_salary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args or []
+
+    if not args:
+        # Show current config
+        salaries = salary.get_salaries()
+        if not salaries:
+            await update.message.reply_text(
+                "<b>💼 Salary Config</b>\n──────────\n\nNo salaries configured.\n"
+                "Use /salary add <name> <amount> <day>",
+                parse_mode="HTML",
+            )
+            return
+
+        lines = ["<b>💼 Salary Config</b>", "──────────"]
+        for s in salaries:
+            lines.append(
+                f"\n{s['name']}\n"
+                f"<b>${s['amount']:,.2f}</b> on day {s['day']}\n"
+                f"→ {s.get('account', salary.DEFAULT_ACCOUNT)}"
+            )
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+        return
+
+    action = args[0].lower()
+
+    if action == "add":
+        if len(args) < 4:
+            await update.message.reply_text(
+                "Usage: /salary add <name> <amount> <day>\ne.g. /salary add Isaac 5000 25"
+            )
+            return
+        name = args[1]
+        try:
+            amount = float(args[2])
+            day = int(args[3])
+        except ValueError:
+            await update.message.reply_text("Invalid amount or day.")
+            return
+        if not 1 <= day <= 28:
+            await update.message.reply_text("Day must be between 1 and 28.")
+            return
+        result = salary.add_salary(name, amount, day)
+        await update.message.reply_text(f"✅ {result}")
+
+    elif action == "remove":
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /salary remove <name>")
+            return
+        name = args[1]
+        result = salary.remove_salary(name)
+        await update.message.reply_text(f"✅ {result}")
+
+    elif action == "set":
+        if len(args) < 3:
+            await update.message.reply_text("Usage: /salary set <name> <amount>")
+            return
+        name = args[1]
+        try:
+            amount = float(args[2])
+        except ValueError:
+            await update.message.reply_text("Invalid amount.")
+            return
+        result = salary.set_salary_amount(name, amount)
+        await update.message.reply_text(f"✅ {result}")
+
+    else:
+        await update.message.reply_text(
+            "Usage:\n"
+            "  /salary — view config\n"
+            "  /salary add <name> <amount> <day>\n"
+            "  /salary remove <name>\n"
+            "  /salary set <name> <amount>"
+        )
+
+
 HELP_DETAILS = {
     "spent": (
         "<b>🧾 /spent [period] [category]</b>\n"
@@ -542,6 +687,35 @@ HELP_DETAILS = {
         "Shows when each account was\n"
         "last updated (last transaction date)."
     ),
+    "income": (
+        "<b>📥 /income [amount] [source] [account]</b>\n"
+        "──────────\n"
+        "Record one-off incoming money.\n"
+        "Default account: UOB One Account.\n"
+        "\n"
+        "<b>Examples:</b>\n"
+        "  /income 5000 Salary\n"
+        "  /income 2000 Bonus\n"
+        "  /income 200 Interest ocbc"
+    ),
+    "salary": (
+        "<b>💼 /salary</b>\n"
+        "──────────\n"
+        "View and manage recurring salaries.\n"
+        "Auto-deposits on the configured day\n"
+        "each month.\n"
+        "\n"
+        "<b>Commands:</b>\n"
+        "  /salary — view config\n"
+        "  /salary add <name> <amount> <day>\n"
+        "  /salary remove <name>\n"
+        "  /salary set <name> <amount>\n"
+        "\n"
+        "<b>Examples:</b>\n"
+        "  /salary add Isaac 5000 25\n"
+        "  /salary add Wife 4000 28\n"
+        "  /salary set Isaac 5500"
+    ),
 }
 
 
@@ -568,6 +742,12 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n"
         "📊 /summary [period]\n"
         "Spending summary\n"
+        "\n"
+        "📥 /income [amount] [source]\n"
+        "Record incoming money\n"
+        "\n"
+        "💼 /salary\n"
+        "Manage recurring salaries\n"
         "\n"
         "✏️ /update [account] [amount]\n"
         "Set balance manually\n"

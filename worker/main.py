@@ -22,10 +22,12 @@ logging.basicConfig(level=logging.INFO)
 
 _poll_task: asyncio.Task | None = None
 _ibkr_task: asyncio.Task | None = None
+_salary_task: asyncio.Task | None = None
 _last_poll: datetime | None = None
 _total_processed: int = 0
 
 IBKR_UPDATE_HOUR = 7  # 7am SGT
+SALARY_CHECK_HOUR = 8  # 8am SGT
 
 
 async def _poll_loop():
@@ -90,9 +92,29 @@ async def _ibkr_daily_loop():
             logger.exception("Error in IBKR daily loop")
 
 
+async def _salary_daily_loop():
+    while True:
+        wait = _seconds_until_next(SALARY_CHECK_HOUR)
+        logger.info("Next salary check in %.0f hours", wait / 3600)
+        await asyncio.sleep(wait)
+
+        try:
+            from worker.services.salary import run_salary_check
+
+            results = await run_salary_check()
+            for result in results:
+                await send_message(
+                    f"💼 Salary deposited\n──────────\n{result}",
+                    parse_mode="HTML",
+                )
+                logger.info("Salary deposited: %s", result)
+        except Exception:
+            logger.exception("Error in salary daily loop")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _poll_task, _ibkr_task
+    global _poll_task, _ibkr_task, _salary_task
 
     # Start Telegram bot
     telegram_app = get_application()
@@ -109,15 +131,17 @@ async def lifespan(app: FastAPI):
     # Start background tasks
     _poll_task = asyncio.create_task(_poll_loop())
     _ibkr_task = asyncio.create_task(_ibkr_daily_loop())
+    _salary_task = asyncio.create_task(_salary_daily_loop())
     logger.info("Email polling started (every %d minutes)", POLL_INTERVAL_MINUTES)
     logger.info("IBKR daily update started")
+    logger.info("Salary check started")
 
     await send_message("👋 Mdm Huat is here! Ready to track your money.")
 
     yield
 
     # Shutdown
-    for task in (_poll_task, _ibkr_task):
+    for task in (_poll_task, _ibkr_task, _salary_task):
         if task:
             task.cancel()
             try:

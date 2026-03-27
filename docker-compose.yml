@@ -26,6 +26,7 @@ services:
         condition: service_healthy
     volumes:
       - ./soul.md:/app/soul.md:ro
+      - worker_data:/app/data
     env_file:
       - .env
     environment:
@@ -52,3 +53,4 @@ services:
 volumes:
   firefly_upload:
   firefly_db:
+  worker_data:

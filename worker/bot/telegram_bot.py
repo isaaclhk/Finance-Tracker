@@ -46,8 +46,10 @@ def get_application() -> Application:
         from worker.bot.commands import (
             handle_balance,
             handle_help,
+            handle_income,
             handle_lastupdate,
             handle_refresh,
+            handle_salary,
             handle_spent,
             handle_summary,
             handle_update,
@@ -60,6 +62,8 @@ def get_application() -> Application:
         _application.add_handler(CommandHandler("balance", auth_required(handle_balance)))
         _application.add_handler(CommandHandler("spent", auth_required(handle_spent)))
         _application.add_handler(CommandHandler("summary", auth_required(handle_summary)))
+        _application.add_handler(CommandHandler("income", auth_required(handle_income)))
+        _application.add_handler(CommandHandler("salary", auth_required(handle_salary)))
         _application.add_handler(CommandHandler("update", auth_required(handle_update)))
         _application.add_handler(CommandHandler("lastupdate", auth_required(handle_lastupdate)))
         _application.add_handler(CommandHandler("help", auth_required(handle_help)))
