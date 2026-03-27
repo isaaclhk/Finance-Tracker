@@ -597,7 +597,9 @@ HELP_DETAILS = {
         "parses transactions, and updates\n"
         "IBKR portfolio via Flex Query API.\n"
         "\n"
-        "Also runs automatically every 5 min."
+        "Email polling runs automatically\n"
+        "every 5 min. IBKR only updates\n"
+        "when you call /refresh."
     ),
     "balance": (
         "<b>💰 /balance</b>\n"
