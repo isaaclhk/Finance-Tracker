@@ -14,15 +14,18 @@ from worker.bot.telegram_bot import (
     send_message,
 )
 from worker.config import POLL_INTERVAL_MINUTES, TELEGRAM_WEBHOOK_URL
-from worker.integrations import firefly_client
+from worker.integrations import firefly_client, ibkr_flex
 from worker.services.transaction_processor import process_new_emails
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 _poll_task: asyncio.Task | None = None
+_ibkr_task: asyncio.Task | None = None
 _last_poll: datetime | None = None
 _total_processed: int = 0
+
+IBKR_POLL_INTERVAL_SECONDS = 24 * 60 * 60  # once a day
 
 
 async def _poll_loop():
@@ -59,9 +62,27 @@ async def _poll_loop():
         await asyncio.sleep(POLL_INTERVAL_MINUTES * 60)
 
 
+async def _ibkr_daily_loop():
+    while True:
+        try:
+            ibkr_data = await ibkr_flex.fetch_ibkr_data()
+            if ibkr_data and ibkr_data["total_equity"] > 0:
+                from worker.bot.commands import _update_account_balance
+
+                updated = await _update_account_balance("IBKR", ibkr_data["total_equity"])
+                if updated:
+                    logger.info("IBKR daily update: %s", updated)
+        except ibkr_flex.IBKRTokenError as e:
+            await send_message(f"⚠️ IBKR token expired: {e}\nPlease renew at IBKR Client Portal.")
+        except Exception:
+            logger.exception("Error in IBKR daily loop")
+
+        await asyncio.sleep(IBKR_POLL_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _poll_task
+    global _poll_task, _ibkr_task
 
     # Start Telegram bot
     telegram_app = get_application()
@@ -75,21 +96,24 @@ async def lifespan(app: FastAPI):
         await telegram_app.updater.start_polling()
         logger.info("Telegram polling started")
 
-    # Start email polling background task
+    # Start background tasks
     _poll_task = asyncio.create_task(_poll_loop())
+    _ibkr_task = asyncio.create_task(_ibkr_daily_loop())
     logger.info("Email polling started (every %d minutes)", POLL_INTERVAL_MINUTES)
+    logger.info("IBKR daily update started")
 
     await send_message("👋 Mdm Huat is here! Ready to track your money.")
 
     yield
 
     # Shutdown
-    if _poll_task:
-        _poll_task.cancel()
-        try:
-            await _poll_task
-        except asyncio.CancelledError:
-            pass
+    for task in (_poll_task, _ibkr_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     if TELEGRAM_WEBHOOK_URL:
         await telegram_app.bot.delete_webhook()
