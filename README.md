@@ -18,6 +18,7 @@ Manual updates (/update) -----------------------^                |
 4. New merchants prompt category confirmation via Telegram inline keyboard
 5. Confirmed categories auto-create Firefly III rules for future transactions
 6. IBKR portfolio updates daily at 7am SGT via Flex Query API
+7. Recurring salaries auto-deposit at 8am SGT on configured day each month
 
 ## Telegram Bot Commands
 
@@ -27,6 +28,8 @@ Manual updates (/update) -----------------------^                |
 | `/balance` | Show all account balances and net worth |
 | `/spent [period] [category]` | Show spending for a period |
 | `/summary [period]` | Spending summary with category breakdown |
+| `/income <amount> <source> [account]` | Record incoming money (e.g. bonus) |
+| `/salary` | View/manage recurring monthly salaries |
 | `/update <account> <amount>` | Manually set account balance |
 | `/lastupdate` | Show last activity date per account |
 | `/help [command]` | Help overview or detailed command usage |
@@ -77,7 +80,8 @@ finance-tracker/
 │   ├── services/
 │   │   ├── transaction_processor.py
 │   │   ├── categorizer.py
-│   │   └── account_mapper.py
+│   │   ├── account_mapper.py
+│   │   └── salary.py
 │   └── utils/
 │       └── dedup.py
 └── tests/

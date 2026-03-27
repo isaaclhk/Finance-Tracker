@@ -184,7 +184,7 @@ finance-tracker/
 │   ├── bot/
 │   │   ├── __init__.py
 │   │   ├── telegram_bot.py        # Telegram bot setup and handlers
-│   │   ├── commands.py            # /refresh, /balance, /spent, /summary, /update, /lastupdate, /help
+│   │   ├── commands.py            # /refresh, /balance, /spent, /summary, /income, /salary, /update, /lastupdate, /help
 │   │   ├── callbacks.py           # Inline keyboard callback handlers (category confirmation)
 │   │   └── llm_query.py           # Natural language query handler
 │   ├── parsers/
@@ -203,7 +203,7 @@ finance-tracker/
 │   │   ├── transaction_processor.py  # Core logic: parse → validate → categorize → store
 │   │   ├── categorizer.py            # Hybrid rule check + LLM categorization
 │   │   ├── account_mapper.py         # Maps card/account hints to Firefly III accounts
-│   │   └── reconciler.py             # Monthly eStatement reconciliation logic
+│   │   └── salary.py                 # Recurring salary config and auto-deposit logic
 │   └── utils/
 │       ├── __init__.py
 │       └── dedup.py               # Transaction deduplication logic
@@ -498,6 +498,7 @@ Triggers a full data refresh:
 Automatic background tasks:
 - Email polling: every 5 minutes
 - IBKR update: daily at 7am SGT (after US market close data is available)
+- Salary deposits: daily at 8am SGT (on configured day of month)
 
 #### `/balance`
 Shows all account balances (savings, investments, cards) and net worth. HTML formatted with bold amounts.
@@ -533,6 +534,22 @@ Manually set an account balance. Creates a transfer transaction to/from "Market 
 - `/update "OCBC Child Savings Account" 3210.50` — exact account name with quotes
 
 Fuzzy-matches the account name against Firefly III accounts.
+
+#### `/income <amount> <source> [account]`
+Record one-off incoming money as a deposit transaction.
+- `/income 5000 Salary` — deposit to UOB One Account (default)
+- `/income 2000 Bonus` — bonus payment
+- `/income 200 Interest ocbc` — deposit to OCBC (fuzzy matched)
+
+#### `/salary`
+View and manage recurring monthly salary deposits. Config stored in `/app/data/salary_config.json` (persisted via Docker volume).
+- `/salary` — view current config
+- `/salary add Isaac 5000 25` — auto-deposit $5,000 on the 25th each month
+- `/salary add Wife 4000 28` — second salary on the 28th
+- `/salary set Isaac 5500` — update amount
+- `/salary remove Isaac` — remove
+
+Background task checks daily at 8am SGT. Deposits to UOB One Account by default.
 
 #### `/lastupdate`
 Shows the last activity date for each account.
