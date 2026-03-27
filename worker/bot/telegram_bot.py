@@ -38,6 +38,7 @@ def get_application() -> Application:
         from worker.bot.commands import (
             handle_balance,
             handle_help,
+            handle_lastupdate,
             handle_refresh,
             handle_spent,
             handle_summary,
@@ -52,6 +53,7 @@ def get_application() -> Application:
         _application.add_handler(CommandHandler("spent", auth_required(handle_spent)))
         _application.add_handler(CommandHandler("summary", auth_required(handle_summary)))
         _application.add_handler(CommandHandler("update", auth_required(handle_update)))
+        _application.add_handler(CommandHandler("lastupdate", auth_required(handle_lastupdate)))
         _application.add_handler(CommandHandler("help", auth_required(handle_help)))
         _application.add_handler(CallbackQueryHandler(auth_required(handle_category_callback)))
         _application.add_handler(

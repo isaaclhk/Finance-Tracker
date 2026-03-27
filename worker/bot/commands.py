@@ -112,18 +112,11 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
-async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        accounts = await firefly_client.get_accounts()
-    except Exception:
-        await update.message.reply_text("Failed to fetch account balances.")
-        return
-
-    lines = ["💰 Balances"]
-    total = 0.0
-
+async def _get_account_data() -> tuple[list[tuple], list[tuple], float]:
+    accounts = await firefly_client.get_accounts()
     assets = []
     liabilities = []
+    total = 0.0
 
     for acct in accounts:
         attrs = acct.get("attributes", {})
@@ -148,25 +141,41 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             liabilities.append((name, balance, date_str))
             total += balance
 
-    if assets:
-        lines.append("")
-        lines.append("🏦 Savings")
-        for name, bal, ds in assets:
-            line = f"  {name}\n  ${bal:,.2f}"
-            if ds:
-                line += f"  ({ds})"
-            lines.append(line)
+    return assets, liabilities, total
 
-    if liabilities:
-        lines.append("")
-        lines.append("💳 Cards")
-        for name, bal, ds in liabilities:
-            line = f"  {name}\n  ${bal:,.2f}"
-            if ds:
-                line += f"  ({ds})"
-            lines.append(line)
 
-    lines.append(f"\n📊 Net Worth: ${total:,.2f}")
+async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        assets, liabilities, total = await _get_account_data()
+    except Exception:
+        await update.message.reply_text("Failed to fetch account balances.")
+        return
+
+    lines = ["💰 Balances", "──────────"]
+
+    for name, bal, _ in assets:
+        lines.append(f"\n🏦 {name}\n${bal:,.2f}")
+
+    for name, bal, _ in liabilities:
+        lines.append(f"\n💳 {name}\n${bal:,.2f}")
+
+    lines.append("\n──────────")
+    lines.append(f"📊 Net Worth: ${total:,.2f}")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def handle_lastupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        assets, liabilities, _ = await _get_account_data()
+    except Exception:
+        await update.message.reply_text("Failed to fetch accounts.")
+        return
+
+    lines = ["📅 Last Updated", "──────────"]
+
+    for name, _, ds in assets + liabilities:
+        lines.append(f"\n{name}\n{ds or 'No activity yet'}")
+
     await update.message.reply_text("\n".join(lines))
 
 
@@ -367,6 +376,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/summary - Monthly summary\n"
         "/update - Set balance\n"
         "  e.g. /update syfe 8500\n"
+        "/lastupdate - Last activity dates\n"
         "/help - This message\n"
         "\n"
         "──────────\n"
