@@ -358,29 +358,6 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg, parse_mode="HTML")
 
-    # Daily spending chart
-    if items:
-        from collections import defaultdict
-
-        from worker.bot.charts import generate_daily_spending
-
-        daily: dict[date, float] = defaultdict(float)
-        for txn in txns:
-            for t in txn.get("attributes", {}).get("transactions", []):
-                if t.get("type") != "withdrawal":
-                    continue
-                cat = (t.get("category_name") or "").lower()
-                if category_filter and category_filter.lower() not in cat:
-                    continue
-                txn_date_str = t.get("date", "")[:10]
-                if txn_date_str:
-                    txn_date = date.fromisoformat(txn_date_str)
-                    daily[txn_date] += float(t.get("amount", 0))
-
-        chart_buf = generate_daily_spending(dict(daily), period_label)
-        if chart_buf:
-            await update.message.reply_photo(photo=chart_buf)
-
 
 async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = date.today()
@@ -463,52 +440,6 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"  {merchant}: <b>${amount:,.2f}</b>")
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
-
-    # Charts
-    from worker.bot.charts import generate_category_pie, generate_monthly_trend
-
-    pie_buf = generate_category_pie(cats)
-    if pie_buf:
-        await update.message.reply_photo(photo=pie_buf)
-
-    monthly_data = await _get_monthly_expense_data(
-        today, months=6, current_total=expense, last_total=expense_prev
-    )
-    trend_buf = generate_monthly_trend(monthly_data)
-    if trend_buf:
-        await update.message.reply_photo(photo=trend_buf)
-
-
-async def _get_monthly_expense_data(
-    reference_date: date,
-    months: int = 6,
-    current_total: float = 0,
-    last_total: float = 0,
-) -> dict[str, float]:
-    result = {}
-    current_start = reference_date.replace(day=1)
-    last_start = (current_start - timedelta(days=1)).replace(day=1)
-
-    for i in range(months - 1, 1, -1):
-        month_start = (current_start - timedelta(days=30 * i)).replace(day=1)
-        next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
-        month_end = next_month - timedelta(days=1)
-
-        try:
-            txns = await firefly_client.get_transactions(start_date=month_start, end_date=month_end)
-            total = sum(
-                float(t.get("amount", 0))
-                for txn in txns
-                for t in txn.get("attributes", {}).get("transactions", [])
-                if t.get("type") == "withdrawal"
-            )
-            result[month_start.strftime("%b %Y")] = total
-        except Exception:
-            result[month_start.strftime("%b %Y")] = 0
-
-    result[last_start.strftime("%b %Y")] = last_total
-    result[current_start.strftime("%b %Y")] = current_total
-    return result
 
 
 async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
