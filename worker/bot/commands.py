@@ -16,13 +16,26 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
     except Exception:
         return None
 
+    # Only match asset and liability accounts (skip revenue/expense/system accounts)
+    candidates = [
+        acct
+        for acct in accounts
+        if acct.get("attributes", {}).get("type") in ("asset", "liability")
+    ]
+
+    # Prefer exact match, then substring match
     matched = None
-    for acct in accounts:
-        attrs = acct.get("attributes", {})
-        name = attrs.get("name", "")
-        if name.lower() == account_name.lower() or account_name.lower() in name.lower():
+    for acct in candidates:
+        name = acct.get("attributes", {}).get("name", "")
+        if name.lower() == account_name.lower():
             matched = acct
             break
+    if not matched:
+        for acct in candidates:
+            name = acct.get("attributes", {}).get("name", "")
+            if account_name.lower() in name.lower():
+                matched = acct
+                break
 
     if not matched:
         return None

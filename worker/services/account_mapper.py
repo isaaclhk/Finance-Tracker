@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 # Bank name fallbacks (always available)
 _BANK_FALLBACKS: dict[str, str] = {
-    "OCBC": "OCBC Savings",
-    "UOB": "UOB Savings",
+    "OCBC": "OCBC Child Savings Account",
+    "UOB": "UOB One Account",
     "Trust": "Trust Card",
     "Syfe": "Syfe Cash",
 }
