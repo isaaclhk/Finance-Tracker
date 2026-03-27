@@ -182,7 +182,7 @@ finance-tracker/
 │   ├── bot/
 │   │   ├── __init__.py
 │   │   ├── telegram_bot.py        # Telegram bot setup and handlers
-│   │   ├── commands.py            # /refresh, /balance, /spent, /summary, /update, /help commands
+│   │   ├── commands.py            # /refresh, /balance, /spent, /summary, /update, /lastupdate, /help
 │   │   ├── callbacks.py           # Inline keyboard callback handlers (category confirmation)
 │   │   └── llm_query.py           # Natural language query handler
 │   ├── parsers/
@@ -502,52 +502,54 @@ If user taps "Other", show the full category list as another inline keyboard.
 #### `/refresh`
 Triggers a full data refresh:
 1. Fetch and process new bank alert emails from Gmail (filtered by "Bank Alerts" label)
-2. Pull latest IBKR data via Flex Query API
-3. Reply with summary: "Found X new transactions. Y categorized automatically, Z pending your review."
+2. Pull latest IBKR data via Flex Query API and update balance in Firefly III
+3. Reply with summary of new transactions and IBKR portfolio value
 4. If IBKR token is expired, notify user to renew it
 
+Automatic background tasks:
+- Email polling: every 5 minutes
+- IBKR update: daily at 7am SGT (after US market close data is available)
+
 #### `/balance`
-Query Firefly III API for all account balances and reply with formatted summary:
-```
-Account Balances
-
-  Bank: OCBC Savings: $3,210.00
-  Bank: UOB Savings: $8,150.00
-  Card: UOB Credit Card: -$890.30
-  Card: Trust Card: -$245.60
-  Bank: IBKR Portfolio: $45,200.00
-  Bank: Syfe Cash: $8,500.00
-
-Net Worth: $63,924.10
-```
+Shows all account balances (savings, investments, cards) and net worth. HTML formatted with bold amounts.
 
 #### `/spent [period] [category]`
-Query Firefly III transactions API with date and category filters.
-- `/spent today` — today's transactions
-- `/spent this week` — this week's total
-- `/spent this month` — this month's total
-- `/spent this month food` — food spending this month
-- `/spent last month` — last month's total
+List transactions and total spending for a given period, with optional category filter.
 
-Reply with transaction list and total.
+**Instant periods (no LLM):**
+- `today`, `yesterday`
+- `this week`, `last week`
+- `this month`, `last month`
+- `this year`, `last year`
+- `last N days/weeks/months` (e.g. `last 7 days`, `past 3 months`)
+- Month names: `january`, `feb`, `march 2025`
+- Month ranges: `jan to mar`, `feb - jun 2025`
 
-#### `/summary`
-Generate a monthly spending summary:
+**LLM fallback:** Unrecognized periods are sent to GPT-4.1 nano for interpretation (e.g. "since christmas", "Q1 2026").
+
+**Category filter:** Optional last word (e.g. `/spent this month food`, `/spent last week transport`).
+
+#### `/summary [period]`
+Spending summary for a period (defaults to this month). Same period parsing as `/spent`.
 - Total income vs total expenses
+- Net (income - expenses)
+- Comparison vs previous period of same length (% change)
 - Breakdown by category (sorted by amount)
-- Comparison to previous month (% change)
 - Top 5 merchants by spend
 
 #### `/update <account> <balance>`
-Manually set an account balance. Creates a balance adjustment transaction in Firefly III.
+Manually set an account balance. Creates a transfer transaction to/from "Market Value Adjustment" account so it doesn't affect spending reports.
 - `/update syfe 8500` — set Syfe Cash balance to $8,500
 - `/update ibkr 45200` — manually set IBKR portfolio value
 - `/update "OCBC Savings" 3210.50` — exact account name with quotes
 
-Fuzzy-matches the account name against Firefly III accounts. Useful for accounts without automatic data feeds (Syfe) or as a manual override.
+Fuzzy-matches the account name against Firefly III accounts.
 
-#### `/help`
-List all available commands and examples.
+#### `/lastupdate`
+Shows the last activity date for each account.
+
+#### `/help [command]`
+Shows command overview, or detailed usage for a specific command (e.g. `/help spent`).
 
 ### Category Confirmation Callbacks
 
@@ -785,10 +787,10 @@ async def fetch_ibkr_flex():
 
 ### What to Track in Firefly III
 
-- Create an asset account "IBKR Portfolio" in Firefly III
-- Update its balance based on the Flex Query total equity value
-- Log deposits/withdrawals as transfers between bank and IBKR accounts
-- Optionally log dividends as revenue transactions
+- Asset account "IBKR Portfolio" — balance updated automatically
+- Balance changes are recorded as transfers to/from "Market Value Adjustment" account (not deposits/withdrawals) so they don't affect spending reports
+- IBKR token expires ~yearly; bot notifies via Telegram when expired
+- Daily auto-update at 7am SGT; also updates on `/refresh`
 
 ---
 
@@ -797,13 +799,14 @@ async def fetch_ibkr_flex():
 ### Accounts to Create
 
 Asset accounts:
-- OCBC Savings (SGD)
-- UOB Savings (SGD)
-- IBKR Portfolio (USD/SGD) — updated automatically via Flex Query API
+- OCBC Child Savings Account (SGD)
+- UOB One Account (SGD)
+- IBKR Portfolio (SGD) — updated automatically via Flex Query API (daily at 7am SGT) and on `/refresh`
 - Syfe Cash (SGD) — updated manually via `/update syfe <balance>`
+- Market Value Adjustment (SGD) — counterpart for investment balance transfers, ignore this account
 
 Liability accounts:
-- UOB Credit Card (SGD)
+- UOB Absolute Cashback Amex (SGD)
 - Trust Card (SGD)
 - (Add future shared credit cards here as liability accounts)
 
@@ -816,6 +819,8 @@ Note: DBS accounts are personal/private and excluded from tracking.
 
 Expense accounts: auto-created per merchant by Firefly III
 
+**Important:** Balance adjustments for IBKR/Syfe use transfer transactions (not deposits/withdrawals) to/from the "Market Value Adjustment" account. This ensures investment value changes don't appear as income or expenses in spending reports.
+
 ### Categories
 
 Create these categories in Firefly III:
@@ -824,14 +829,10 @@ Create these categories in Firefly III:
 - Transport
 - Shopping
 - Health
-- Entertainment
 - Subscriptions
 - Utilities
 - Education
 - Housing
-- Insurance
-- Gifts
-- Travel
 - Misc
 
 Note: No "Investments" category needed — money flowing into investment accounts (IBKR, Syfe) is tracked as transfers between accounts, not expenses.
