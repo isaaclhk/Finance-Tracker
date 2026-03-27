@@ -1,4 +1,6 @@
+import calendar
 import logging
+import re
 from datetime import date, timedelta
 
 from telegram import Update
@@ -178,45 +180,118 @@ async def handle_lastupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
-def _parse_period(args: list[str]) -> tuple[date, date, str]:
+MONTH_NAMES = {m.lower(): i for i, m in enumerate(calendar.month_name) if m}
+MONTH_ABBR = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
+
+
+def _parse_period(text: str) -> tuple[date, date, str] | None:
     today = date.today()
-    text = " ".join(args).lower().strip()
+    text = text.lower().strip()
 
     if not text or text == "today":
         return today, today, "today"
+
+    if text == "yesterday":
+        d = today - timedelta(days=1)
+        return d, d, "yesterday"
 
     if text == "this week":
         start = today - timedelta(days=today.weekday())
         return start, today, "this week"
 
+    if text == "last week":
+        end = today - timedelta(days=today.weekday() + 1)
+        start = end - timedelta(days=6)
+        return start, end, "last week"
+
     if text == "this month":
-        start = today.replace(day=1)
-        return start, today, "this month"
+        return today.replace(day=1), today, "this month"
 
     if text == "last month":
-        first_this_month = today.replace(day=1)
-        last_day_prev = first_this_month - timedelta(days=1)
-        first_prev = last_day_prev.replace(day=1)
-        return first_prev, last_day_prev, "last month"
+        first_this = today.replace(day=1)
+        last_prev = first_this - timedelta(days=1)
+        return last_prev.replace(day=1), last_prev, "last month"
 
-    return today, today, text
+    if text == "this year":
+        return today.replace(month=1, day=1), today, "this year"
+
+    if text == "last year":
+        start = today.replace(year=today.year - 1, month=1, day=1)
+        end = today.replace(year=today.year - 1, month=12, day=31)
+        return start, end, "last year"
+
+    # "last N days/weeks/months"
+    m = re.match(r"(?:last|past)\s+(\d+)\s+(day|week|month)s?", text)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if unit == "day":
+            start = today - timedelta(days=n)
+        elif unit == "week":
+            start = today - timedelta(weeks=n)
+        elif unit == "month":
+            start = (today.replace(day=1) - timedelta(days=30 * (n - 1))).replace(day=1)
+        return start, today, f"last {n} {unit}s"
+
+    # Month name: "january", "feb", "march 2025"
+    for names in (MONTH_NAMES, MONTH_ABBR):
+        for name, month_num in names.items():
+            if text.startswith(name):
+                rest = text[len(name) :].strip()
+                year = int(rest) if rest.isdigit() else today.year
+                start = date(year, month_num, 1)
+                last_day = calendar.monthrange(year, month_num)[1]
+                end = date(year, month_num, last_day)
+                return start, min(end, today), f"{calendar.month_name[month_num]} {year}"
+
+    return None
+
+
+async def _llm_parse_period(text: str) -> tuple[date, date, str] | None:
+    today = date.today()
+    prompt = (
+        f"Today is {today.isoformat()}. "
+        f'The user wants to see spending for: "{text}". '
+        f"Return JSON with exactly: "
+        f'{{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "label": "short description"}}. '
+        f"Only return JSON, nothing else."
+    )
+    try:
+        from worker.integrations import openai_client
+
+        result = await openai_client.parse_and_categorize(prompt, "system")
+        if result and "start" in result and "end" in result:
+            start = date.fromisoformat(result["start"])
+            end = date.fromisoformat(result["end"])
+            label = result.get("label", text)
+            return start, min(end, today), label
+    except Exception:
+        pass
+    return None
 
 
 async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args or []
+    raw_text = " ".join(args).strip()
 
-    # Separate period args from category
+    # Split category filter from period text
+    # Try the full text as a period first, then try without the last word as category
     category_filter = None
-    period_args = []
-    known_periods = {"today", "this", "last", "week", "month"}
+    result = _parse_period(raw_text)
 
-    for arg in args:
-        if arg.lower() in known_periods:
-            period_args.append(arg)
-        else:
-            category_filter = arg
+    if result is None and len(args) > 1:
+        # Last word might be a category filter
+        category_filter = args[-1]
+        result = _parse_period(" ".join(args[:-1]))
 
-    start, end, period_label = _parse_period(period_args)
+    if result is None:
+        # LLM fallback
+        result = await _llm_parse_period(raw_text)
+
+    if result is None:
+        result = (date.today(), date.today(), raw_text or "today")
+
+    start, end, period_label = result
 
     try:
         txns = await firefly_client.get_transactions(start_date=start, end_date=end)
