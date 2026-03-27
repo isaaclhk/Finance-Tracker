@@ -703,7 +703,7 @@ HELP_DETAILS = {
         "──────────\n"
         "View and manage recurring salaries.\n"
         "Auto-deposits on the configured day\n"
-        "each month.\n"
+        "each month to UOB One Account.\n"
         "\n"
         "<b>Commands:</b>\n"
         "  /salary — view config\n"
