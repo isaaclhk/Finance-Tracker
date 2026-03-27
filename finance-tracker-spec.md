@@ -824,13 +824,51 @@ docker compose up -d                  # Restart with new images
 
 ### Backups
 
-Set up a daily cron job to back up the SQLite database file:
+Daily offsite backup to Google Drive via `rclone`. Backs up:
+- **Firefly III SQLite database** — all transaction history
+- **`.env` file** — encrypted with GPG before upload
+
+Backup script at `~/backup.sh`:
 ```bash
-mkdir -p ~/backups
-crontab -e
-# Add:
-0 3 * * * docker cp $(docker ps -qf name=firefly):/var/www/html/storage/database/database.sqlite ~/backups/firefly-$(date +\%Y\%m\%d).sqlite && find ~/backups -name "firefly-*.sqlite" -mtime +30 -delete
+#!/bin/bash
+DATE=$(date +%Y%m%d)
+BACKUP_DIR=~/backups
+DB_BACKUP="$BACKUP_DIR/firefly-$DATE.sqlite"
+ENV_BACKUP="$BACKUP_DIR/env-$DATE.gpg"
+
+mkdir -p $BACKUP_DIR
+
+# Backup Firefly III database
+docker cp $(docker ps -qf name=firefly):/var/www/html/storage/database/database.sqlite "$DB_BACKUP"
+
+# Encrypt .env
+gpg --batch --yes --passphrase-file ~/.backup_passphrase -c -o "$ENV_BACKUP" ~/Documents/Finance-Tracker/.env
+
+# Sync to Google Drive
+rclone copy $BACKUP_DIR gdrive:finance-tracker-backups --max-age 24h
+
+# Clean local backups older than 30 days
+find $BACKUP_DIR -name "firefly-*.sqlite" -mtime +30 -delete
+find $BACKUP_DIR -name "env-*.gpg" -mtime +30 -delete
 ```
+
+Scheduled daily at 4am via cron:
+```bash
+0 4 * * * /home/isaaclhk/backup.sh
+```
+
+GPG passphrase stored at `~/.backup_passphrase` (chmod 600). **Remember this passphrase** — needed to decrypt `.env` during recovery.
+
+### Disaster Recovery
+
+To rebuild on a new machine:
+1. Clone repo: `git clone https://github.com/isaaclhk/Finance-Tracker.git`
+2. Install Docker, Cloudflare Tunnel, rclone
+3. Restore backups from Google Drive: `rclone copy gdrive:finance-tracker-backups ~/backups`
+4. Decrypt `.env`: `gpg -d ~/backups/env-YYYYMMDD.gpg > .env`
+5. Restore database: `docker compose up -d firefly` then `docker cp ~/backups/firefly-YYYYMMDD.sqlite $(docker ps -qf name=firefly):/var/www/html/storage/database/database.sqlite`
+6. Restart: `docker compose restart firefly && docker compose up -d --build worker`
+7. Create new Cloudflare Tunnel and update DNS
 
 ### 2. Gmail Setup (Label-Based Filtering)
 
