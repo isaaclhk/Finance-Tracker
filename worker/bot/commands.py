@@ -384,27 +384,37 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = date.today()
-    start_this = today.replace(day=1)
-    first_this = today.replace(day=1)
-    last_prev = first_this - timedelta(days=1)
-    start_prev = last_prev.replace(day=1)
+    args = context.args or []
+    raw_text = " ".join(args).strip()
+
+    # Parse period or default to this month
+    result = _parse_period(raw_text) if raw_text else None
+    if result is None and raw_text:
+        result = await _llm_parse_period(raw_text)
+    if result is None:
+        result = (today.replace(day=1), today, "this month")
+
+    start, end, period_label = result
+
+    # Compute a comparison period of the same length, ending just before start
+    period_days = (end - start).days
+    prev_end = start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=period_days)
 
     try:
-        this_month = await firefly_client.get_transactions(start_date=start_this, end_date=today)
-        last_month = await firefly_client.get_transactions(
-            start_date=start_prev, end_date=last_prev
-        )
+        txns = await firefly_client.get_transactions(start_date=start, end_date=end)
+        prev_txns = await firefly_client.get_transactions(start_date=prev_start, end_date=prev_end)
     except Exception:
         await update.message.reply_text("Failed to fetch summary data.")
         return
 
-    def _summarize(txns):
+    def _summarize(txn_list):
         by_category = {}
         by_merchant = {}
         total_expense = 0.0
         total_income = 0.0
 
-        for txn in txns:
+        for txn in txn_list:
             for t in txn.get("attributes", {}).get("transactions", []):
                 amount = float(t.get("amount", 0))
                 desc = t.get("description", "Unknown")
@@ -420,32 +430,32 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return total_income, total_expense, by_category, by_merchant
 
-    income_this, expense_this, cats_this, merchants_this = _summarize(this_month)
-    _, expense_last, _, _ = _summarize(last_month)
+    income, expense, cats, merchants = _summarize(txns)
+    _, expense_prev, _, _ = _summarize(prev_txns)
 
-    net = income_this - expense_this
+    net = income - expense
     lines = [
-        f"<b>📊 {start_this.strftime('%B %Y')}</b>",
+        f"<b>📊 {period_label}</b>",
         "──────────",
         "",
-        f"📥 Income: <b>${income_this:,.2f}</b>",
-        f"📤 Expenses: <b>${expense_this:,.2f}</b>",
+        f"📥 Income: <b>${income:,.2f}</b>",
+        f"📤 Expenses: <b>${expense:,.2f}</b>",
         f"{'📈' if net >= 0 else '📉'} Net: <b>${net:,.2f}</b>",
     ]
 
-    if expense_last > 0:
-        change = ((expense_this - expense_last) / expense_last) * 100
+    if expense_prev > 0:
+        change = ((expense - expense_prev) / expense_prev) * 100
         arrow = "⬆️" if change > 0 else "⬇️"
-        lines.append(f"\n{arrow} vs last month: <b>{abs(change):.0f}%</b>")
+        lines.append(f"\n{arrow} vs previous period: <b>{abs(change):.0f}%</b>")
 
-    sorted_cats = sorted(cats_this.items(), key=lambda x: x[1], reverse=True)
+    sorted_cats = sorted(cats.items(), key=lambda x: x[1], reverse=True)
     if sorted_cats:
         lines.append("\n<b>🏷️ By Category</b>")
         lines.append("──────────")
         for cat, amount in sorted_cats[:10]:
             lines.append(f"  {cat}: <b>${amount:,.2f}</b>")
 
-    sorted_merchants = sorted(merchants_this.items(), key=lambda x: x[1], reverse=True)
+    sorted_merchants = sorted(merchants.items(), key=lambda x: x[1], reverse=True)
     if sorted_merchants:
         lines.append("\n<b>🏪 Top Merchants</b>")
         lines.append("──────────")
@@ -457,12 +467,12 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Charts
     from worker.bot.charts import generate_category_pie, generate_monthly_trend
 
-    pie_buf = generate_category_pie(cats_this)
+    pie_buf = generate_category_pie(cats)
     if pie_buf:
         await update.message.reply_photo(photo=pie_buf)
 
     monthly_data = await _get_monthly_expense_data(
-        today, months=6, current_total=expense_this, last_total=expense_last
+        today, months=6, current_total=expense, last_total=expense_prev
     )
     trend_buf = generate_monthly_trend(monthly_data)
     if trend_buf:
