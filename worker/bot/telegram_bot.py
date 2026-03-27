@@ -75,6 +75,11 @@ async def send_message(text: str, **kwargs):
     await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text, **kwargs)
 
 
+async def send_photo(photo, caption: str = "", **kwargs):
+    bot = get_bot()
+    await bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=photo, caption=caption, **kwargs)
+
+
 async def notify_parse_failure(parsed: dict):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", "?")
