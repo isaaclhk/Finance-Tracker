@@ -49,32 +49,27 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
     if abs(diff) < 0.01:
         return None
 
+    # Use transfer so it doesn't count as income/expense
+    adjustment_account = "Market Value Adjustment"
     if diff > 0:
-        payload = {
-            "transactions": [
-                {
-                    "type": "deposit",
-                    "date": date.today().isoformat(),
-                    "amount": str(abs(diff)),
-                    "description": f"Balance adjustment for {acct_name}",
-                    "source_name": "Balance Adjustment",
-                    "destination_name": acct_name,
-                }
-            ]
-        }
+        source = adjustment_account
+        destination = acct_name
     else:
-        payload = {
-            "transactions": [
-                {
-                    "type": "withdrawal",
-                    "date": date.today().isoformat(),
-                    "amount": str(abs(diff)),
-                    "description": f"Balance adjustment for {acct_name}",
-                    "source_name": acct_name,
-                    "destination_name": "Balance Adjustment",
-                }
-            ]
-        }
+        source = acct_name
+        destination = adjustment_account
+
+    payload = {
+        "transactions": [
+            {
+                "type": "transfer",
+                "date": date.today().isoformat(),
+                "amount": str(abs(diff)),
+                "description": f"Balance adjustment for {acct_name}",
+                "source_name": source,
+                "destination_name": destination,
+            }
+        ]
+    }
 
     try:
         await firefly_client.create_transaction(payload)
