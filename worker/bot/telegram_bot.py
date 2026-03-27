@@ -120,24 +120,16 @@ async def ask_category_confirmation(
         f"Suggested: {suggested_category or 'Unknown'}"
     )
 
-    # Short category codes for callback data (64-byte limit)
-    quick_categories = [
-        ("Food & Drink", "FD"),
-        ("Groceries", "GR"),
-        ("Transport", "TR"),
-        ("Shopping", "SH"),
-    ]
+    from worker.bot.callbacks import CATEGORY_CODES
 
     buttons = []
     row = []
-    for name, code in quick_categories:
+    for code, name in CATEGORY_CODES.items():
         row.append(InlineKeyboardButton(name, callback_data=f"cat:{txn_id}:{code}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
     if row:
         buttons.append(row)
-
-    buttons.append([InlineKeyboardButton("Other...", callback_data=f"cat:{txn_id}:OTHER")])
 
     await send_message(text, reply_markup=InlineKeyboardMarkup(buttons))

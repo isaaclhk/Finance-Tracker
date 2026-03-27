@@ -2,7 +2,7 @@ from worker.bot.callbacks import CATEGORY_CODES, CODE_BY_NAME
 
 
 def test_category_codes_complete():
-    assert len(CATEGORY_CODES) == 15
+    assert len(CATEGORY_CODES) == 10
     assert "FD" in CATEGORY_CODES
     assert CATEGORY_CODES["FD"] == "Food & Drink"
     assert CATEGORY_CODES["TR"] == "Transport"

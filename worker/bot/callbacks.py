@@ -16,15 +16,10 @@ CATEGORY_CODES = {
     "TR": "Transport",
     "SH": "Shopping",
     "HE": "Health",
-    "EN": "Entertainment",
     "SU": "Subscriptions",
     "UT": "Utilities",
     "ED": "Education",
     "HO": "Housing",
-    "IN": "Insurance",
-    "IV": "Investments",
-    "GI": "Gifts",
-    "TV": "Travel",
     "MI": "Misc",
 }
 

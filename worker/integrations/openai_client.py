@@ -25,15 +25,10 @@ CATEGORIES = [
     "Transport",
     "Shopping",
     "Health",
-    "Entertainment",
     "Subscriptions",
     "Utilities",
     "Education",
     "Housing",
-    "Insurance",
-    "Investments",
-    "Gifts",
-    "Travel",
     "Misc",
 ]
 
