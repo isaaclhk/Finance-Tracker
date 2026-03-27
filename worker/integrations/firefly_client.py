@@ -61,6 +61,9 @@ async def get_transactions(
 async def create_transaction(payload: dict) -> dict:
     client = get_client()
     resp = await client.post("/api/v1/transactions", json=payload)
+    if resp.status_code == 422:
+        logger.error("Firefly III rejected transaction: %s", resp.text)
+        logger.error("Payload was: %s", payload)
     resp.raise_for_status()
     return resp.json()["data"]
 
