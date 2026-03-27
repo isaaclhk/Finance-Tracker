@@ -233,17 +233,40 @@ def _parse_period(text: str) -> tuple[date, date, str] | None:
             start = (today.replace(day=1) - timedelta(days=30 * (n - 1))).replace(day=1)
         return start, today, f"last {n} {unit}s"
 
-    # Month name: "january", "feb", "march 2025"
-    for names in (MONTH_NAMES, MONTH_ABBR):
-        for name, month_num in names.items():
-            if text.startswith(name):
-                rest = text[len(name) :].strip()
-                year = int(rest) if rest.isdigit() else today.year
-                start = date(year, month_num, 1)
-                last_day = calendar.monthrange(year, month_num)[1]
-                end = date(year, month_num, last_day)
-                return start, min(end, today), f"{calendar.month_name[month_num]} {year}"
+    # Month-to-month range: "jan to mar", "january to march 2025", "feb - apr"
+    range_match = re.match(r"([a-z]+)\s*(?:to|-)\s*([a-z]+)\s*(\d{4})?", text)
+    if range_match:
+        start_month = _resolve_month(range_match.group(1))
+        end_month = _resolve_month(range_match.group(2))
+        year = int(range_match.group(3)) if range_match.group(3) else today.year
+        if start_month and end_month:
+            start = date(year, start_month, 1)
+            last_day = calendar.monthrange(year, end_month)[1]
+            end = min(date(year, end_month, last_day), today)
+            start_name = calendar.month_abbr[start_month]
+            end_name = calendar.month_abbr[end_month]
+            return start, end, f"{start_name}–{end_name} {year}"
 
+    # Single month: "january", "feb", "march 2025"
+    single_match = re.match(r"([a-z]+)\s*(\d{4})?$", text)
+    if single_match:
+        month_num = _resolve_month(single_match.group(1))
+        if month_num:
+            year = int(single_match.group(2)) if single_match.group(2) else today.year
+            start = date(year, month_num, 1)
+            last_day = calendar.monthrange(year, month_num)[1]
+            end = min(date(year, month_num, last_day), today)
+            return start, end, f"{calendar.month_name[month_num]} {year}"
+
+    return None
+
+
+def _resolve_month(text: str) -> int | None:
+    text = text.lower().strip()
+    if text in MONTH_NAMES:
+        return MONTH_NAMES[text]
+    if text in MONTH_ABBR:
+        return MONTH_ABBR[text]
     return None
 
 

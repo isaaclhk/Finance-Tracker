@@ -124,6 +124,38 @@ def test_parse_period_month_with_year():
     assert end == date(2025, 3, 31)
 
 
+def test_parse_period_month_range():
+    result = _parse_period("jan to mar")
+    assert result is not None
+    start, end, label = result
+    assert start.month == 1
+    assert end.month == 3
+    assert "Jan" in label
+    assert "Mar" in label
+
+
+def test_parse_period_month_range_with_year():
+    result = _parse_period("january to march 2025")
+    assert result is not None
+    start, end, label = result
+    assert start == date(2025, 1, 1)
+    assert end == date(2025, 3, 31)
+
+
+def test_parse_period_month_range_abbr():
+    result = _parse_period("feb to mar 2025")
+    assert result is not None
+    assert result[0].month == 2
+    assert result[1] == date(2025, 3, 31)
+
+
+def test_parse_period_month_range_dash():
+    result = _parse_period("jan - mar 2025")
+    assert result is not None
+    assert result[0].month == 1
+    assert result[1] == date(2025, 3, 31)
+
+
 def test_parse_period_unknown_returns_none():
     result = _parse_period("some random text")
     assert result is None
