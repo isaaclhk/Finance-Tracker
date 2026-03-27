@@ -98,18 +98,17 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ibkr_flex.IBKRTokenError as e:
         ibkr_msg = f"\n⚠️  IBKR token expired: {e}"
 
-    lines = ["✅  Done!"]
-    lines.append("──────────")
-    lines.append(f"📬  {result.new_count} new transaction(s)")
-    lines.append(f"🏷️  {result.auto_categorized} auto-categorized")
+    lines = ["<b>✅ Done!</b>", "──────────"]
+    lines.append(f"📬 <b>{result.new_count}</b> new transaction(s)")
+    lines.append(f"🏷️ <b>{result.auto_categorized}</b> auto-categorized")
     if result.pending_review:
-        lines.append(f"👆  {len(result.pending_review)} need your input")
+        lines.append(f"👆 <b>{len(result.pending_review)}</b> need your input")
     if result.errors:
-        lines.append(f"⚠️  {result.errors} error(s)")
+        lines.append(f"⚠️ {result.errors} error(s)")
     if ibkr_msg:
         lines.append(ibkr_msg)
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def _get_account_data() -> tuple[list[tuple], list[tuple], float]:
@@ -151,17 +150,17 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Failed to fetch account balances.")
         return
 
-    lines = ["💰 Balances", "──────────"]
+    lines = ["<b>💰 Balances</b>", "──────────"]
 
     for name, bal, _ in assets:
-        lines.append(f"\n🏦 {name}\n${bal:,.2f}")
+        lines.append(f"\n🏦 {name}\n<b>${bal:,.2f}</b>")
 
     for name, bal, _ in liabilities:
-        lines.append(f"\n💳 {name}\n${bal:,.2f}")
+        lines.append(f"\n💳 {name}\n<b>${bal:,.2f}</b>")
 
     lines.append("\n──────────")
-    lines.append(f"📊 Net Worth: ${total:,.2f}")
-    await update.message.reply_text("\n".join(lines))
+    lines.append(f"📊 Net Worth: <b>${total:,.2f}</b>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def handle_lastupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,12 +170,12 @@ async def handle_lastupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Failed to fetch accounts.")
         return
 
-    lines = ["📅 Last Updated", "──────────"]
+    lines = ["<b>📅 Last Updated</b>", "──────────"]
 
     for name, _, ds in assets + liabilities:
-        lines.append(f"\n{name}\n{ds or 'No activity yet'}")
+        lines.append(f"\n{name}\n<b>{ds or 'No activity yet'}</b>")
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 def _parse_period(args: list[str]) -> tuple[date, date, str]:
@@ -243,7 +242,7 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total += amount
             items.append(f"  ${amount:,.2f} · {desc}")
 
-    header = f"🧾  Spending — {period_label}"
+    header = f"<b>🧾 Spending — {period_label}</b>"
     if category_filter:
         header += f" ({category_filter})"
     header += "\n──────────"
@@ -254,12 +253,12 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(items) > 15:
             lines.append(f"\n  ... and {len(items) - 15} more")
         lines.append("\n──────────")
-        lines.append(f"💵  Total: ${total:,.2f}")
+        lines.append(f"💵 Total: <b>${total:,.2f}</b>")
         msg = "\n".join(lines)
     else:
         msg = f"{header}\n\nNo transactions found."
 
-    await update.message.reply_text(msg)
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 
 async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -305,34 +304,34 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     net = income_this - expense_this
     lines = [
-        f"📊  Monthly Summary — {start_this.strftime('%B %Y')}",
+        f"<b>📊 {start_this.strftime('%B %Y')}</b>",
         "──────────",
         "",
-        f"📥  Income:    ${income_this:,.2f}",
-        f"📤  Expenses:  ${expense_this:,.2f}",
-        f"{'📈' if net >= 0 else '📉'}  Net:       ${net:,.2f}",
+        f"📥 Income: <b>${income_this:,.2f}</b>",
+        f"📤 Expenses: <b>${expense_this:,.2f}</b>",
+        f"{'📈' if net >= 0 else '📉'} Net: <b>${net:,.2f}</b>",
     ]
 
     if expense_last > 0:
         change = ((expense_this - expense_last) / expense_last) * 100
         arrow = "⬆️" if change > 0 else "⬇️"
-        lines.append(f"\n{arrow}  vs last month: {abs(change):.0f}%")
+        lines.append(f"\n{arrow} vs last month: <b>{abs(change):.0f}%</b>")
 
     sorted_cats = sorted(cats_this.items(), key=lambda x: x[1], reverse=True)
     if sorted_cats:
-        lines.append("\n🏷️  By Category")
+        lines.append("\n<b>🏷️ By Category</b>")
         lines.append("──────────")
         for cat, amount in sorted_cats[:10]:
-            lines.append(f"  {cat}: ${amount:,.2f}")
+            lines.append(f"  {cat}: <b>${amount:,.2f}</b>")
 
     sorted_merchants = sorted(merchants_this.items(), key=lambda x: x[1], reverse=True)
     if sorted_merchants:
-        lines.append("\n🏪  Top Merchants")
+        lines.append("\n<b>🏪 Top Merchants</b>")
         lines.append("──────────")
         for merchant, amount in sorted_merchants[:5]:
-            lines.append(f"  {merchant}: ${amount:,.2f}")
+            lines.append(f"  {merchant}: <b>${amount:,.2f}</b>")
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -366,7 +365,7 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hello! I'm Mdm Huat\n"
+        "<b>👋 Hello! I'm Mdm Huat</b>\n"
         "──────────\n"
         "\n"
         "/refresh - Fetch new txns\n"
@@ -380,5 +379,6 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - This message\n"
         "\n"
         "──────────\n"
-        "Or just ask me anything lah!"
+        "Or just ask me anything lah!",
+        parse_mode="HTML",
     )
