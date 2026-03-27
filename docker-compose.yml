@@ -42,6 +42,12 @@ services:
       VALIDATION_MAX_AMOUNT: ${VALIDATION_MAX_AMOUNT:-50000}
       CONVERSATION_HISTORY_LENGTH: ${CONVERSATION_HISTORY_LENGTH:-5}
       CONVERSATION_TIMEOUT_MINUTES: ${CONVERSATION_TIMEOUT_MINUTES:-30}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8080/health'); import json; d=json.loads(r.read()); exit(0 if d['status']=='ok' else 1)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   firefly_upload:

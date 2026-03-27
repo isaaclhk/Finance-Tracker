@@ -141,9 +141,27 @@ app = FastAPI(title="Finance Tracker Worker", lifespan=lifespan)
 
 @app.get("/health")
 async def health() -> dict:
+    from worker.bot.telegram_bot import get_last_telegram_activity
+
+    now = datetime.now()
+    last_tg = get_last_telegram_activity()
+
+    # Email polling should happen every POLL_INTERVAL_MINUTES
+    # Allow 2x the interval as grace period; None means just started
+    email_healthy = _last_poll is None or (
+        now - _last_poll
+    ).total_seconds() < POLL_INTERVAL_MINUTES * 60 * 2
+
+    # If we've never received a Telegram update, that's fine (no one has messaged yet)
+    # But if we did receive one before and it's been >30 min, polling might be dead
+    tg_healthy = last_tg is None or (now - last_tg).total_seconds() < 1800
+
+    status = "ok" if (email_healthy and tg_healthy) else "degraded"
+
     return {
-        "status": "ok",
+        "status": status,
         "last_poll": _last_poll.isoformat() if _last_poll else None,
+        "last_telegram": last_tg.isoformat() if last_tg else None,
         "total_processed": _total_processed,
     }
 
