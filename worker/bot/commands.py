@@ -540,35 +540,105 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+HELP_DETAILS = {
+    "spent": (
+        "<b>🧾 /spent [period] [category]</b>\n"
+        "──────────\n"
+        "List transactions and daily spending chart.\n"
+        "\n"
+        "<b>Periods (instant):</b>\n"
+        "  today, yesterday\n"
+        "  this week, last week\n"
+        "  this month, last month\n"
+        "  this year, last year\n"
+        "  last N days/weeks/months\n"
+        "  jan, february, mar 2025\n"
+        "  jan to mar, feb - jun 2025\n"
+        "\n"
+        "<b>Anything else</b> → AI interprets it\n"
+        '<i>e.g. "since christmas", "Q1 2026"</i>\n'
+        "\n"
+        "<b>Category filter</b> (optional, last word):\n"
+        "  /spent this month food\n"
+        "  /spent last week transport"
+    ),
+    "summary": (
+        "<b>📊 /summary [period]</b>\n"
+        "──────────\n"
+        "Income vs expenses, category breakdown,\n"
+        "top merchants, charts.\n"
+        "\n"
+        "Accepts the same periods as /spent.\n"
+        "Defaults to this month.\n"
+        "\n"
+        "Includes comparison vs the previous\n"
+        "period of the same length.\n"
+        "\n"
+        "<b>Examples:</b>\n"
+        "  /summary\n"
+        "  /summary last month\n"
+        "  /summary jan to mar"
+    ),
+    "update": (
+        "<b>✏️ /update [account] [amount]</b>\n"
+        "──────────\n"
+        "Manually set an account balance.\n"
+        "Fuzzy-matches the account name.\n"
+        "\n"
+        "<b>Examples:</b>\n"
+        "  /update syfe 8500\n"
+        "  /update ibkr 45200\n"
+        '  /update "Syfe Cash" 8500.50'
+    ),
+    "refresh": (
+        "<b>🔄 /refresh</b>\n"
+        "──────────\n"
+        "Fetches new bank alert emails,\n"
+        "parses transactions, and updates\n"
+        "IBKR portfolio via Flex Query API.\n"
+        "\n"
+        "Also runs automatically every 5 min."
+    ),
+    "balance": (
+        "<b>💰 /balance</b>\n"
+        "──────────\n"
+        "Shows all account balances\n"
+        "(savings, investments, cards)\n"
+        "and net worth."
+    ),
+    "lastupdate": (
+        "<b>📅 /lastupdate</b>\n"
+        "──────────\n"
+        "Shows when each account was\n"
+        "last updated (last transaction date)."
+    ),
+}
+
+
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args or []
+    cmd = args[0].lstrip("/") if args else ""
+
+    if cmd in HELP_DETAILS:
+        await update.message.reply_text(HELP_DETAILS[cmd], parse_mode="HTML")
+        return
+
     await update.message.reply_text(
         "<b>👋 Hello! I'm Mdm Huat</b>\n"
         "──────────\n"
         "\n"
-        "🔄 /refresh\n"
-        "Fetch new transactions\n"
-        "\n"
-        "💰 /balance\n"
-        "Account balances\n"
-        "\n"
-        "🧾 /spent [period] [category]\n"
-        "Show spending\n"
-        "<i>e.g. /spent this month food</i>\n"
-        "\n"
-        "📊 /summary\n"
-        "Monthly spending summary\n"
-        "\n"
-        "✏️ /update [account] [amount]\n"
-        "Manually set balance\n"
-        "<i>e.g. /update syfe 8500</i>\n"
-        "\n"
-        "📅 /lastupdate\n"
-        "Last activity dates\n"
-        "\n"
-        "❓ /help\n"
-        "This message\n"
+        "🔄 /refresh — Fetch new transactions\n"
+        "💰 /balance — Account balances\n"
+        "🧾 /spent — Show spending\n"
+        "📊 /summary — Spending summary\n"
+        "✏️ /update — Set balance manually\n"
+        "📅 /lastupdate — Last activity dates\n"
+        "❓ /help — This message\n"
         "\n"
         "──────────\n"
+        "Type <b>/help [command]</b> for details\n"
+        "<i>e.g. /help spent</i>\n"
+        "\n"
         "Or just ask me anything!",
         parse_mode="HTML",
     )
