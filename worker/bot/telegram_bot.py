@@ -78,7 +78,7 @@ async def notify_parse_failure(parsed: dict):
     amount = parsed.get("amount", "?")
     await send_message(
         f"⚠️  Aiyo, cannot read this one\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        f"──────────\n"
         f"🏪  {merchant}  ·  ${amount}\n\n"
         f"Check the email manually lah"
     )
@@ -91,7 +91,7 @@ async def notify_unknown_account(parsed: dict):
     amount = parsed.get("amount", "?")
     await send_message(
         f"❓  Eh, which account is this?\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        f"──────────\n"
         f"💳  Card *{card}  ({bank})\n"
         f"🏪  {merchant}  ·  ${amount}\n\n"
         f"Add this card to ACCOUNT_MAP in .env"
@@ -102,7 +102,7 @@ async def send_large_amount_confirmation(parsed: dict):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", 0)
     await send_message(
-        f"💰  Wah, big purchase sia!\n━━━━━━━━━━━━━━━━━━\n🏪  {merchant}\n💵  ${amount:,.2f}"
+        f"💰  Wah, big purchase sia!\n──────────\n🏪  {merchant}\n💵  ${amount:,.2f}"
     )
 
 
@@ -125,11 +125,11 @@ async def ask_category_confirmation(
 
     text = (
         f"🆕  New merchant ah!\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        f"──────────\n"
         f"🏪  {merchant}\n"
         f"💵  ${amount:,.2f}  ·  {bank} *{card}\n"
         f"📅  {txn_date}{time_str}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        f"──────────\n"
         f"💡  I think this one is: {suggested_category or 'not sure leh'}"
     )
 

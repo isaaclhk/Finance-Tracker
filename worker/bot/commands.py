@@ -99,7 +99,7 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ibkr_msg = f"\n⚠️  IBKR token expired: {e}"
 
     lines = ["✅  Done!"]
-    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append("──────────")
     lines.append(f"📬  {result.new_count} new transaction(s)")
     lines.append(f"🏷️  {result.auto_categorized} auto-categorized")
     if result.pending_review:
@@ -119,7 +119,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Failed to fetch account balances.")
         return
 
-    lines = ["💰  Account Balances", "━━━━━━━━━━━━━━━━━━"]
+    lines = ["💰 Balances"]
     total = 0.0
 
     assets = []
@@ -136,7 +136,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if last_activity:
             try:
                 dt = date.fromisoformat(last_activity[:10])
-                date_str = f"  · {dt.strftime('%d %b %Y')}"
+                date_str = dt.strftime("%d %b %Y")
             except ValueError:
                 pass
 
@@ -150,19 +150,23 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if assets:
         lines.append("")
-        lines.append("🏦  Savings & Investments")
+        lines.append("🏦 Savings")
         for name, bal, ds in assets:
-            lines.append(f"     {name}: ${bal:,.2f}{ds}")
+            line = f"  {name}\n  ${bal:,.2f}"
+            if ds:
+                line += f"  ({ds})"
+            lines.append(line)
 
     if liabilities:
         lines.append("")
-        lines.append("💳  Cards")
+        lines.append("💳 Cards")
         for name, bal, ds in liabilities:
-            lines.append(f"     {name}: ${bal:,.2f}{ds}")
+            line = f"  {name}\n  ${bal:,.2f}"
+            if ds:
+                line += f"  ({ds})"
+            lines.append(line)
 
-    lines.append("")
-    lines.append("━━━━━━━━━━━━━━━━━━")
-    lines.append(f"📊  Net Worth: ${total:,.2f}")
+    lines.append(f"\n📊 Net Worth: ${total:,.2f}")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -228,19 +232,19 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amount = float(t.get("amount", 0))
             desc = t.get("description", "Unknown")
             total += amount
-            items.append(f"     ${amount:,.2f}  ·  {desc}")
+            items.append(f"  ${amount:,.2f} · {desc}")
 
     header = f"🧾  Spending — {period_label}"
     if category_filter:
         header += f" ({category_filter})"
-    header += "\n━━━━━━━━━━━━━━━━━━"
+    header += "\n──────────"
 
     if items:
         lines = [header, ""]
         lines.extend(items[:15])
         if len(items) > 15:
-            lines.append(f"\n     ... and {len(items) - 15} more")
-        lines.append("\n━━━━━━━━━━━━━━━━━━")
+            lines.append(f"\n  ... and {len(items) - 15} more")
+        lines.append("\n──────────")
         lines.append(f"💵  Total: ${total:,.2f}")
         msg = "\n".join(lines)
     else:
@@ -293,7 +297,7 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     net = income_this - expense_this
     lines = [
         f"📊  Monthly Summary — {start_this.strftime('%B %Y')}",
-        "━━━━━━━━━━━━━━━━━━",
+        "──────────",
         "",
         f"📥  Income:    ${income_this:,.2f}",
         f"📤  Expenses:  ${expense_this:,.2f}",
@@ -308,16 +312,16 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sorted_cats = sorted(cats_this.items(), key=lambda x: x[1], reverse=True)
     if sorted_cats:
         lines.append("\n🏷️  By Category")
-        lines.append("━━━━━━━━━━━━━━━━━━")
+        lines.append("──────────")
         for cat, amount in sorted_cats[:10]:
-            lines.append(f"     {cat}: ${amount:,.2f}")
+            lines.append(f"  {cat}: ${amount:,.2f}")
 
     sorted_merchants = sorted(merchants_this.items(), key=lambda x: x[1], reverse=True)
     if sorted_merchants:
         lines.append("\n🏪  Top Merchants")
-        lines.append("━━━━━━━━━━━━━━━━━━")
+        lines.append("──────────")
         for merchant, amount in sorted_merchants[:5]:
-            lines.append(f"     {merchant}: ${amount:,.2f}")
+            lines.append(f"  {merchant}: ${amount:,.2f}")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -353,23 +357,18 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋  Hello! I'm Mdm Huat\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "🔄  /refresh\n"
-        "     Fetch new transactions\n\n"
-        "💰  /balance\n"
-        "     Show account balances\n\n"
-        "🧾  /spent [period] [category]\n"
-        "     Show spending\n"
-        "     e.g. /spent today\n"
-        "     e.g. /spent this month food\n\n"
-        "📊  /summary\n"
-        "     Monthly spending summary\n\n"
-        "✏️  /update <account> <amount>\n"
-        "     Manually set balance\n"
-        "     e.g. /update syfe 8500\n\n"
-        "❓  /help\n"
-        "     This message\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "👋 Hello! I'm Mdm Huat\n"
+        "──────────\n"
+        "\n"
+        "/refresh - Fetch new txns\n"
+        "/balance - Account balances\n"
+        "/spent - Show spending\n"
+        "  e.g. /spent this month food\n"
+        "/summary - Monthly summary\n"
+        "/update - Set balance\n"
+        "  e.g. /update syfe 8500\n"
+        "/help - This message\n"
+        "\n"
+        "──────────\n"
         "Or just ask me anything lah!"
     )
