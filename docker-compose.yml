@@ -20,7 +20,8 @@ services:
     build: ./worker
     restart: unless-stopped
     depends_on:
-      - firefly
+      firefly:
+        condition: service_healthy
     volumes:
       - ./soul.md:/app/soul.md:ro
     env_file:
