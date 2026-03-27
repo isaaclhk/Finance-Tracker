@@ -82,10 +82,13 @@ services:
       TZ: Asia/Singapore
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
     restart: unless-stopped
     depends_on:
-      - firefly
+      firefly:
+        condition: service_healthy
     volumes:
       - ./soul.md:/app/soul.md:ro
     env_file:
@@ -110,9 +113,9 @@ volumes:
   firefly_db:
 ```
 
-### Cloudflare Tunnel (replaces Caddy)
+### Cloudflare Tunnel
 
-HTTPS is handled by Cloudflare Tunnel instead of Caddy. The tunnel runs as a systemd service (`cloudflared`) and routes `finance.lam-lab.cc` to `http://localhost:8080`. No port forwarding or SSL certificates needed.
+HTTPS is handled by Cloudflare Tunnel. The tunnel runs as a systemd service (`cloudflared`) and routes `finance.lam-lab.cc` to `http://localhost:8080`. No port forwarding or SSL certificates needed.
 
 Config at `/etc/cloudflared/config.yml`:
 ```yaml
@@ -151,7 +154,7 @@ IBKR_FLEX_QUERY_ID=<Flex Query ID>
 
 # Account mapping (JSON: card last 4 digits → Firefly III account name)
 # Bank name fallbacks (OCBC, UOB, Trust, Syfe) are built in
-ACCOUNT_MAP={"1234": "UOB Credit Card", "5678": "Trust Card", "9012": "OCBC Savings", "0001": "UOB Savings"}
+ACCOUNT_MAP={"1234": "UOB Absolute Cashback Amex", "5678": "Trust Card", "9012": "OCBC Child Savings Account", "0001": "UOB One Account"}
 
 # Validation thresholds (optional, defaults shown)
 VALIDATION_LARGE_AMOUNT_THRESHOLD=5000
@@ -176,8 +179,7 @@ finance-tracker/
 ├── pyproject.toml             # Project metadata, ruff config, uv settings
 ├── worker/
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── main.py                    # FastAPI app + startup
+│   ├── main.py                    # FastAPI app + startup + background tasks
 │   ├── config.py                  # Environment variable loading + configurable thresholds
 │   ├── bot/
 │   │   ├── __init__.py
@@ -207,29 +209,18 @@ finance-tracker/
 │       └── dedup.py               # Transaction deduplication logic
 ```
 
-### requirements.txt
-
-```
-fastapi>=0.100.0
-uvicorn>=0.23.0
-python-telegram-bot>=20.0
-google-api-python-client>=2.0.0
-google-auth-oauthlib>=1.0.0
-openai>=1.30.0
-httpx>=0.24.0
-pdfplumber>=0.9.0
-python-dateutil>=2.8.0
-```
-
 ### Dockerfile
+
+Uses `uv` for dependency management (no `requirements.txt`). Dependencies are defined in `pyproject.toml`.
 
 ```dockerfile
 FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . ./worker/
-CMD ["uvicorn", "worker.main:app", "--host", "0.0.0.0", "--port", "8080"]
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY worker/ ./worker/
+CMD ["uv", "run", "uvicorn", "worker.main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
 ---
@@ -272,7 +263,7 @@ Return JSON with exactly these fields:
   "card_or_account": string (last 4 digits of card or account identifier),
   "transaction_type": "card_spending" | "fund_transfer" | "atm_withdrawal" | "giro" | "paynow" | "incoming" | "refund" | "bill_payment" | "unknown",
   "bank": "DBS" | "OCBC" | "UOB" | "Syfe" | "unknown",
-  "suggested_category": one of: "Food & Drink" | "Groceries" | "Transport" | "Shopping" | "Health" | "Entertainment" | "Subscriptions" | "Utilities" | "Education" | "Housing" | "Insurance" | "Investments" | "Gifts" | "Travel" | "Misc" | null
+  "suggested_category": one of: "Food & Drink" | "Groceries" | "Transport" | "Shopping" | "Health" | "Subscriptions" | "Utilities" | "Education" | "Housing" | "Misc" | null
 }
 If any field cannot be determined, use null."""
         }, {
@@ -334,14 +325,14 @@ async def validate_parsed_transaction(parsed: dict, telegram_bot) -> dict | None
 Maps the `card_or_account` field from the LLM to the correct Firefly III account. Configured via the `ACCOUNT_MAP` environment variable (JSON string).
 
 Built-in bank name fallbacks are always available:
-- `"OCBC"` → `"OCBC Savings"`
-- `"UOB"` → `"UOB Savings"`
+- `"OCBC"` → `"OCBC Child Savings Account"`
+- `"UOB"` → `"UOB One Account"`
 - `"Trust"` → `"Trust Card"`
 - `"Syfe"` → `"Syfe Cash"`
 
 Card-specific mappings are set via env var:
 ```bash
-ACCOUNT_MAP={"8106": "UOB Credit Card", "5678": "Trust Card", "9012": "OCBC Savings", "0001": "UOB Savings"}
+ACCOUNT_MAP={"1234": "UOB Absolute Cashback Amex", "5678": "Trust Card", "9012": "OCBC Child Savings Account", "0001": "UOB One Account"}
 ```
 
 ### Transaction Type Routing
@@ -461,27 +452,25 @@ When Firefly III rules don't match (category remains null after creation), the s
 
 ### Tier 3: User Confirmation via Telegram
 
-After the LLM suggests a category, the bot sends an inline keyboard to the user:
+After the LLM suggests a category, the bot sends an inline keyboard with the suggested category prominently displayed:
 
 ```
-🆕 New merchant detected
+🆕 New merchant!
+──────────
+🏪 BOBER TEA ION ORCHARD
+💵 $5.50 · UOB *1234
+📅 25 Mar 2026 14:15
+──────────
+💡 Suggested: Food & Drink
 
-BOBER TEA ION ORCHARD
-SGD 5.50 — UOB Card *1234
-25 Mar 2026, 2:15 PM
-
-Suggested: Food & Drink
-
-[✅ Food & Drink] [🛒 Groceries]
-[🚗 Transport]    [✏️ Other]
+[✅ Yes, Food & Drink]
+[📋 Pick another]
 ```
 
-When the user taps a button:
-1. Update the transaction's category in Firefly III
-2. Auto-create a Firefly III rule: "description contains '{merchant}' → set category to '{chosen_category}'"
-3. Next time this merchant appears, it auto-categorizes without LLM or user input
-
-If user taps "Other", show the full category list as another inline keyboard.
+- Tap the suggested category to accept with one tap
+- Tap "Pick another" to see all 10 categories
+- On confirmation: update Firefly III transaction, auto-create a rule for the merchant
+- Next time this merchant appears, it auto-categorizes without LLM or user input
 
 ---
 
@@ -541,7 +530,7 @@ Spending summary for a period (defaults to this month). Same period parsing as `
 Manually set an account balance. Creates a transfer transaction to/from "Market Value Adjustment" account so it doesn't affect spending reports.
 - `/update syfe 8500` — set Syfe Cash balance to $8,500
 - `/update ibkr 45200` — manually set IBKR portfolio value
-- `/update "OCBC Savings" 3210.50` — exact account name with quotes
+- `/update "OCBC Child Savings Account" 3210.50` — exact account name with quotes
 
 Fuzzy-matches the account name against Firefly III accounts.
 
@@ -583,62 +572,9 @@ BOT_PERSONALITY = load_personality()
 
 ### soul.md file
 
-This file lives at the project root and is mounted into the worker container as a read-only volume. Edit it directly on your VPS with any text editor — no code changes needed.
+This file lives at the project root and is mounted into the worker container as a read-only volume. The current persona is **Mdm Huat**, a Singaporean auntie.
 
-**Default soul.md:**
-
-```markdown
-# Finance Bot
-
-You are a friendly personal finance assistant for a couple in Singapore.
-
-## Communication Style
-- Be concise and practical
-- Use SGD for all amounts
-- Give actionable insights when relevant
-- Keep responses short — this is a Telegram chat, not a report
-
-## When the couple is under budget
-Celebrate briefly. A simple "Nice, on track this month!" is enough.
-
-## When they're overspending
-Be honest but not judgmental. Point out which category is growing 
-and suggest a specific, practical adjustment.
-
-## Formatting
-- Use bullet points for lists
-- Bold key numbers
-- Use emojis sparingly — one per message max
-```
-
-**Example alternative: Singlish auntie style**
-
-```markdown
-# Auntie Money
-
-You are Auntie Money, a warm Singaporean auntie who helps a couple 
-manage their finances. You speak with occasional Singlish.
-
-## Communication Style
-- Warm and encouraging, like a favourite auntie
-- Use Singlish naturally but don't overdo it
-- Use SGD for all amounts
-- Keep it real — don't sugarcoat bad spending
-
-## Reactions
-- Under budget: "Wah, steady lah! This month looking good."
-- Overspending: "Aiyo, the food spending a bit jialat already. 
-  Maybe cook more this week?"
-- Big purchase: "Wah, this one not small ah. You sure or not?"
-
-## Rules
-- Never be mean, just honest
-- Always suggest a practical fix, not just point out the problem
-```
-
-**To change personality:** edit `soul.md` on your VPS, then `docker compose restart worker`. Takes effect immediately.
-
-The personality can be changed anytime without modifying any code — just edit the file and restart.
+**To change personality:** edit `soul.md` on the server, then `docker compose restart worker`. No code changes needed.
 
 #### Conversation History (configurable)
 
@@ -761,29 +697,11 @@ Setup:
 3. Note the Query ID
 4. Generate a Flex Web Service Token in Account Settings
 
-Fetching:
-```python
-async def fetch_ibkr_flex():
-    # Step 1: Request report generation
-    request_url = (
-        f"https://ndcdyn.interactivebrokers.com/AccountManagement/FlexStatementService.SendRequest"
-        f"?t={FLEX_TOKEN}&q={FLEX_QUERY_ID}&v=3"
-    )
-    resp = await httpx.get(request_url)
-    reference_code = parse_reference_code(resp.text)
-    
-    # Step 2: Wait briefly, then fetch the report
-    await asyncio.sleep(5)
-    statement_url = (
-        f"https://ndcdyn.interactivebrokers.com/AccountManagement/FlexStatementService.GetStatement"
-        f"?t={FLEX_TOKEN}&q={reference_code}&v=3"
-    )
-    resp = await httpx.get(statement_url)
-    
-    # Step 3: Parse XML and push to Firefly III
-    positions = parse_flex_xml(resp.text)
-    await update_firefly_ibkr_accounts(positions)
-```
+API endpoints:
+- Send request: `https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest?t={TOKEN}&q={QUERY_ID}&v=3`
+- Get statement: `https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement?t={TOKEN}&q={REFERENCE_CODE}&v=3`
+
+The worker requests report generation, waits 5 seconds, then fetches the XML. Parses `EquitySummaryByReportDateInBase` for total equity (uses the latest report date entry).
 
 ### What to Track in Firefly III
 
@@ -936,7 +854,7 @@ All bank alert emails are filtered into a single Gmail label ("Bank Alerts"). Th
 3. Create OAuth 2.0 credentials (Desktop application type)
 4. Download credentials JSON
 5. Run initial OAuth flow locally to get refresh token
-6. Add credentials and refresh token to your `.env` file on the VPS
+6. Add credentials and refresh token to your `.env` file on the server
 
 ### 4. Telegram Bot Setup
 
@@ -944,31 +862,32 @@ All bank alert emails are filtered into a single Gmail label ("Bank Alerts"). Th
 2. Get bot token
 3. Create a group chat with you and your wife, add the bot to the group
 4. Get the group chat ID (send a message in the group, then check `https://api.telegram.org/bot<TOKEN>/getUpdates` for the chat ID)
-5. Add bot token and chat ID to your `.env` file on the VPS
+5. Add bot token and chat ID to your `.env` file on the server
 
 ### 5. IBKR Flex Query Setup
 
-1. Log into IBKR Client Portal
-2. Go to Reports → Flex Queries → Create
-3. Include: Account balances, positions, trades, cash transactions
-4. Save and note the Query ID
-5. Go to Account Settings → generate Flex Web Service Token
-6. Add both to your `.env` file on the VPS
+1. Log into IBKR Client Portal → Reports → Flex Queries → Create
+2. Include: **Net Asset Value**, **Open Positions**, **Cash Report** (select all fields)
+3. Save and note the **Query ID**
+4. Generate a **Flex Web Service Token** (may be under Account Settings or Classic Account Management portal)
+5. Add both to your `.env` file on the server
+6. Token expires ~yearly; bot will notify via Telegram when expired
 
 ### 6. Firefly III Initial Config
 
-1. Access Firefly III via `https://finance.yourdomain.com`
-2. Create admin account
+1. Access Firefly III via `https://finance.lam-lab.cc`
+2. Create admin account, set default currency to **SGD**
 3. Create accounts with **today's opening balances** (check each bank app for current balances):
 
    **Asset accounts:**
-   - OCBC Savings → opening balance: your current balance
-   - UOB Savings → opening balance: your current balance
+   - OCBC Child Savings Account → opening balance: your current balance
+   - UOB One Account → opening balance: your current balance
    - IBKR Portfolio → opening balance: your current total equity
    - Syfe Cash → opening balance: your current balance
+   - Market Value Adjustment → opening balance: $0 (counterpart for investment transfers)
 
    **Liability accounts:**
-   - UOB Credit Card → opening balance: your current outstanding amount
+   - UOB Absolute Cashback Amex → opening balance: your current outstanding amount
    - Trust Card → opening balance: your current outstanding amount
 
    When creating each account, Firefly III will ask for "Opening balance" and "Opening balance date" — set the date to today. From this point forward, every email-parsed transaction adjusts these balances automatically.
