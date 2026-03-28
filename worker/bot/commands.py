@@ -548,7 +548,7 @@ async def handle_salary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not salaries:
             await update.message.reply_text(
                 "<b>💼 Salary Config</b>\n──────────\n\nNo salaries configured.\n"
-                "Use /salary add <name> <amount> <day>",
+                "Use /salary add [name] [amount] [day]",
                 parse_mode="HTML",
             )
             return
