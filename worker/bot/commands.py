@@ -1,7 +1,7 @@
 import calendar
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from telegram import Update
@@ -127,8 +127,8 @@ async def _get_account_data() -> tuple[list[tuple], list[tuple], Decimal]:
         date_str = ""
         if last_activity:
             try:
-                dt = date.fromisoformat(last_activity[:10])
-                date_str = dt.strftime("%d %b %Y")
+                dt = datetime.fromisoformat(last_activity)
+                date_str = dt.strftime("%d %b %Y %H:%M")
             except ValueError:
                 pass
 
