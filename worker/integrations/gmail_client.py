@@ -110,7 +110,15 @@ async def fetch_new_alerts() -> tuple[list[Email], str | None]:
 
     query = ""
     if cursor:
-        query = f"after:{cursor}"
+        # Gmail 'after:' expects epoch seconds
+        try:
+            from datetime import datetime
+
+            dt = datetime.fromisoformat(cursor)
+            epoch = int(dt.timestamp())
+            query = f"after:{epoch}"
+        except (ValueError, OSError):
+            query = f"after:{cursor}"
 
     try:
         results = (
