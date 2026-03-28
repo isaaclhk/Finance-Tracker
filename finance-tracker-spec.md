@@ -536,10 +536,14 @@ Manually set an account balance. Creates a transfer transaction to/from "Market 
 Fuzzy-matches the account name against Firefly III accounts.
 
 #### `/income <amount> <source> [account]`
-Record one-off incoming money as a deposit transaction.
+Record one-off incoming money as a deposit transaction. Source name is auto-title-cased for consistency (e.g. `salary` → `Salary`).
 - `/income 5000 Salary` — deposit to UOB One Account (default)
 - `/income 2000 Bonus` — bonus payment
 - `/income 200 Interest ocbc` — deposit to OCBC (fuzzy matched)
+
+Defaults to today's date. Confirmation shows two buttons:
+- **✅ Today** — confirm with today's date
+- **📅 Change date** — bot prompts you to type a date (e.g. `yesterday`, `25 mar`, `1 jan 2026`), parsed by the period parser or LLM fallback
 
 #### `/salary`
 View and manage recurring monthly salary deposits. Config stored in `/app/data/salary_config.json` (persisted via Docker volume).

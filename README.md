@@ -28,7 +28,7 @@ Manual updates (/update) -----------------------^                |
 | `/balance` | Show all account balances and net worth |
 | `/spent [period] [category]` | Show spending for a period |
 | `/summary [period]` | Spending summary with category breakdown |
-| `/income <amount> <source> [account]` | Record incoming money (e.g. bonus) |
+| `/income <amount> <source> [account]` | Record incoming money, with optional backdating |
 | `/salary` | View/manage recurring monthly salaries |
 | `/update <account> <amount>` | Manually set account balance |
 | `/lastupdate` | Show last activity date per account |
