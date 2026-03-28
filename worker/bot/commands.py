@@ -535,7 +535,10 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         txn = await firefly_client.create_transaction(payload)
         txn_id = txn.get("id", "0")
-        buttons = [[InlineKeyboardButton("📅 Change date", callback_data=f"date:{txn_id}")]]
+        buttons = [
+            [InlineKeyboardButton("✅ Today", callback_data=f"setdate:{txn_id}:0")],
+            [InlineKeyboardButton("📅 Change date", callback_data=f"date:{txn_id}")],
+        ]
         await update.message.reply_text(
             f"✅ <b>${amount:,.2f}</b> from {source}\n→ {matched} (today)",
             parse_mode="HTML",

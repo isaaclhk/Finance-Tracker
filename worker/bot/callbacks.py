@@ -154,10 +154,13 @@ async def _handle_set_date(query, data: str):
         await query.edit_message_text("❌ Failed to change date.")
         return
 
-    # Update the message — replace "(today)" with the new date
+    # Clean up the message
     original_text = query.message.text or ""
-    original_text = original_text.replace("(today)", f"({new_date.strftime('%d %b %Y')})")
-    # Remove the "Select date:" line if present
     original_text = original_text.split("\n📅 Select date:")[0].strip()
-    date_str = new_date.strftime("%d %b %Y")
-    await query.edit_message_text(f"{original_text}\n\n📅 Date changed to {date_str}")
+
+    if days_ago == 0:
+        await query.edit_message_text(f"{original_text}\n\n✅ Confirmed")
+    else:
+        date_str = new_date.strftime("%d %b %Y")
+        original_text = original_text.replace("(today)", f"({date_str})")
+        await query.edit_message_text(f"{original_text}\n\n📅 Date changed to {date_str}")
