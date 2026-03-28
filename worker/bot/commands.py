@@ -472,14 +472,16 @@ async def handle_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
     args = context.args or []
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage: /income <amount> <source> [account] [on <date>]\n"
+            "Usage: /income <amount> <source> [account]\n"
             "Examples:\n"
             "  /income 5000 Salary\n"
-            "  /income 2000 Bonus on yesterday\n"
-            "  /income 200 Interest ocbc on 25 mar"
+            "  /income 2000 Bonus\n"
+            "  /income 200 Interest ocbc"
         )
         return
 
@@ -489,35 +491,8 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid amount. Must be a number.")
         return
 
-    # Split on "on" keyword for date
+    # Parse source and optional account
     remaining = args[1:]
-    txn_date = date.today()
-    date_label = "today"
-
-    # Find "on" keyword to separate source/account from date
-    on_index = None
-    for i, arg in enumerate(remaining):
-        if arg.lower() == "on":
-            on_index = i
-            break
-
-    if on_index is not None:
-        date_text = " ".join(remaining[on_index + 1 :])
-        remaining = remaining[:on_index]
-
-        if date_text:
-            result = _parse_period(date_text)
-            if result:
-                txn_date = result[0]
-                date_label = result[2]
-            else:
-                # LLM fallback
-                result = await _llm_parse_period(date_text)
-                if result:
-                    txn_date = result[0]
-                    date_label = result[2]
-
-    # Parse source and optional account from remaining args
     if len(remaining) > 1:
         source = " ".join(remaining[:-1])
         account_name = remaining[-1]
@@ -546,7 +521,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "transactions": [
             {
                 "type": "deposit",
-                "date": txn_date.isoformat(),
+                "date": date.today().isoformat(),
                 "amount": str(amount),
                 "description": source,
                 "source_name": source,
@@ -555,12 +530,14 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     }
 
-    date_suffix = f" ({date_label})" if date_label != "today" else ""
     try:
-        await firefly_client.create_transaction(payload)
+        txn = await firefly_client.create_transaction(payload)
+        txn_id = txn.get("id", "0")
+        buttons = [[InlineKeyboardButton("📅 Change date", callback_data=f"date:{txn_id}")]]
         await update.message.reply_text(
-            f"✅ <b>${amount:,.2f}</b> from {source}{date_suffix}\n→ {matched}",
+            f"✅ <b>${amount:,.2f}</b> from {source}\n→ {matched} (today)",
             parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons),
         )
     except Exception:
         await update.message.reply_text("❌ Failed to record income.")
@@ -717,17 +694,17 @@ HELP_DETAILS = {
         "last updated (last transaction date)."
     ),
     "income": (
-        "<b>📥 /income [amount] [source] [account] [on date]</b>\n"
+        "<b>📥 /income [amount] [source] [account]</b>\n"
         "──────────\n"
         "Record one-off incoming money.\n"
         "Default account: UOB One Account.\n"
-        "Default date: today.\n"
+        "Date defaults to today — tap\n"
+        "'Change date' to backdate.\n"
         "\n"
         "<b>Examples:</b>\n"
         "  /income 5000 Salary\n"
-        "  /income 2000 Bonus on yesterday\n"
-        "  /income 200 Interest ocbc on 25 mar\n"
-        "  /income 500 Refund on last friday"
+        "  /income 2000 Bonus\n"
+        "  /income 200 Interest ocbc"
     ),
     "salary": (
         "<b>💼 /salary</b>\n"
