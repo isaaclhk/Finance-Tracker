@@ -159,12 +159,12 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if assets:
         lines.append("\n<b>🏦 Savings &amp; Investments</b>")
         for name, bal, _ in assets:
-            lines.append(f"• {name} — <b>${bal:,.2f}</b>")
+            lines.append(f"\n{name}\n<b>${bal:,.2f}</b>")
 
     if liabilities:
         lines.append("\n<b>💳 Cards &amp; Debt</b>")
         for name, bal, _ in liabilities:
-            lines.append(f"• {name} — <b>${bal:,.2f}</b>")
+            lines.append(f"\n{name}\n<b>${bal:,.2f}</b>")
 
     lines.append("\n──────────")
     lines.append(f"📊 Net Worth: <b>${total:,.2f}</b>")
