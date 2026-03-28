@@ -135,6 +135,8 @@ async def _get_account_data() -> tuple[list[tuple], list[tuple], Decimal]:
                 pass
 
         if acct_type == "asset":
+            if "market value adjustment" in name.lower():
+                continue
             assets.append((name, balance, date_str))
             total += balance
         elif acct_type == "liability":
