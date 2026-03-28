@@ -517,6 +517,8 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source = " ".join(remaining)
         matched = salary.DEFAULT_ACCOUNT
 
+    source = source.title()
+
     payload = {
         "transactions": [
             {
