@@ -119,7 +119,7 @@ async def _handle_date_change(query, data: str):
 
     original_text = query.message.text or ""
     await query.edit_message_text(
-        f"{original_text}\n\n📅 Type the date:\n<i>e.g. yesterday, last month, march</i>",
+        f"{original_text}\n\n📅 Type the date:\n<i>e.g. yesterday, 25 mar, 1 jan 2026</i>",
         parse_mode="HTML",
     )
 
