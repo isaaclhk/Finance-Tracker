@@ -16,6 +16,7 @@ class ProcessResult:
     new_count: int = 0
     auto_categorized: int = 0
     pending_review: list[dict] = field(default_factory=list)
+    skipped: int = 0
     errors: int = 0
 
 
@@ -63,13 +64,13 @@ async def process_new_emails() -> ProcessResult:
         try:
             parsed = await llm_email_parser.parse_and_categorize(email.body, email.sender)
             if parsed is None:
-                result.errors += 1
+                result.skipped += 1
                 continue
 
             validated, warnings = validate_parsed_transaction(parsed)
             if validated is None:
                 logger.warning("Validation failed: %s", warnings)
-                result.errors += 1
+                result.skipped += 1
                 continue
 
             source_account = map_to_firefly_account(validated)
