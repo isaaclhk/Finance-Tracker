@@ -154,13 +154,17 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Failed to fetch account balances.")
         return
 
-    lines = ["<b>💰 Balances</b>", "──────────"]
+    lines = ["<b>💰 Balances</b>"]
 
-    for name, bal, _ in assets:
-        lines.append(f"\n🏦 {name}\n<b>${bal:,.2f}</b>")
+    if assets:
+        lines.append("\n<b>🏦 Savings &amp; Investments</b>")
+        for name, bal, _ in assets:
+            lines.append(f"  {name}\n  <b>${bal:,.2f}</b>")
 
-    for name, bal, _ in liabilities:
-        lines.append(f"\n💳 {name}\n<b>${bal:,.2f}</b>")
+    if liabilities:
+        lines.append("\n<b>💳 Cards &amp; Debt</b>")
+        for name, bal, _ in liabilities:
+            lines.append(f"  {name}\n  <b>${bal:,.2f}</b>")
 
     lines.append("\n──────────")
     lines.append(f"📊 Net Worth: <b>${total:,.2f}</b>")
