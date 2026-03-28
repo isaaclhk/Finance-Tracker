@@ -24,7 +24,7 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
     candidates = [
         acct
         for acct in accounts
-        if acct.get("attributes", {}).get("type") in ("asset", "liability", "liabilities")
+        if acct.get("attributes", {}).get("type") in ("asset", "liabilities")
     ]
 
     # Prefer exact match, then substring match
@@ -139,7 +139,7 @@ async def _get_account_data() -> tuple[list[tuple], list[tuple], Decimal]:
                 continue
             assets.append((name, balance, date_str))
             total += balance
-        elif acct_type in ("liability", "liabilities"):
+        elif acct_type == "liabilities":
             balance = -abs(balance)
             liabilities.append((name, balance, date_str))
             total += balance
