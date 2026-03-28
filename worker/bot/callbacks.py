@@ -105,32 +105,22 @@ async def _apply_category(query, txn_id: str, category: str):
     await query.edit_message_text(f"{original_text}\n\n✅ Ok, tagged as {category}!")
 
 
+# Tracks which chat is waiting for a date input: {chat_id: txn_id}
+pending_date_input: dict[int, str] = {}
+
+
 async def _handle_date_change(query, data: str):
     # data format: "date:{txn_id}"
     txn_id = data.split(":", 1)[1]
+    chat_id = query.message.chat_id
 
-    buttons = [
-        [
-            InlineKeyboardButton("Yesterday", callback_data=f"setdate:{txn_id}:1"),
-            InlineKeyboardButton("2 days ago", callback_data=f"setdate:{txn_id}:2"),
-        ],
-        [
-            InlineKeyboardButton("3 days ago", callback_data=f"setdate:{txn_id}:3"),
-            InlineKeyboardButton("4 days ago", callback_data=f"setdate:{txn_id}:4"),
-        ],
-        [
-            InlineKeyboardButton("5 days ago", callback_data=f"setdate:{txn_id}:5"),
-            InlineKeyboardButton("6 days ago", callback_data=f"setdate:{txn_id}:6"),
-        ],
-        [
-            InlineKeyboardButton("7 days ago", callback_data=f"setdate:{txn_id}:7"),
-        ],
-    ]
+    # Store pending date input for this chat
+    pending_date_input[chat_id] = txn_id
 
     original_text = query.message.text or ""
     await query.edit_message_text(
-        f"{original_text}\n\n📅 Select date:",
-        reply_markup=InlineKeyboardMarkup(buttons),
+        f"{original_text}\n\n📅 Type the date:\n<i>e.g. yesterday, 25 mar, 1 jan 2026</i>",
+        parse_mode="HTML",
     )
 
 
@@ -144,6 +134,10 @@ async def _handle_set_date(query, data: str):
     days_ago = int(parts[2])
     new_date = date.today() - timedelta(days=days_ago)
 
+    await _update_txn_date(query, txn_id, new_date, days_ago == 0)
+
+
+async def _update_txn_date(query, txn_id: str, new_date: date, is_today: bool = False):
     try:
         await firefly_client.update_transaction(
             int(txn_id),
@@ -154,12 +148,14 @@ async def _handle_set_date(query, data: str):
         await query.edit_message_text("❌ Failed to change date.")
         return
 
-    # Clean up the message
     original_text = query.message.text or ""
-    original_text = original_text.split("\n📅 Select date:")[0].strip()
+    # Remove any previous date prompt
+    for marker in ("\n\n📅 Type the date:", "\n\n📅 Select date:"):
+        if marker in original_text:
+            original_text = original_text.split(marker)[0].strip()
 
-    if days_ago == 0:
-        await query.edit_message_text(f"{original_text}\n\n✅ Confirmed")
+    if is_today:
+        await query.edit_message_text(f"{original_text}\n\n✅ Recorded for today")
     else:
         date_str = new_date.strftime("%d %b %Y")
         original_text = original_text.replace("(today)", f"({date_str})")

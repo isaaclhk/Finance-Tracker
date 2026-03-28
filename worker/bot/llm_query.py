@@ -47,6 +47,13 @@ async def handle_natural_query(update: Update, context: ContextTypes.DEFAULT_TYP
     question = update.message.text
     now = datetime.now()
 
+    # Check if this chat is waiting for a date input
+    from worker.bot.callbacks import pending_date_input
+
+    if chat_id in pending_date_input:
+        await _handle_pending_date(update, chat_id, question)
+        return
+
     # Reset history if inactive
     if chat_id in last_activity:
         if now - last_activity[chat_id] > timedelta(minutes=CONVERSATION_TIMEOUT_MINUTES):
@@ -92,3 +99,34 @@ async def handle_natural_query(update: Update, context: ContextTypes.DEFAULT_TYP
         conversation_histories[chat_id] = history[-max_messages:]
 
     await update.message.reply_text(answer)
+
+
+async def _handle_pending_date(update, chat_id: int, text: str):
+    from worker.bot.callbacks import pending_date_input
+    from worker.bot.commands import _llm_parse_period, _parse_period
+
+    txn_id = pending_date_input.pop(chat_id)
+
+    # Parse the date
+    result = _parse_period(text.strip())
+    if not result:
+        result = await _llm_parse_period(text.strip())
+
+    if not result:
+        await update.message.reply_text("Could not understand that date. Income kept as today.")
+        return
+
+    new_date = result[0]
+    date_str = new_date.strftime("%d %b %Y")
+
+    try:
+        from worker.integrations import firefly_client
+
+        await firefly_client.update_transaction(
+            int(txn_id),
+            {"transactions": [{"date": new_date.isoformat()}]},
+        )
+        await update.message.reply_text(f"📅 Date set to {date_str}")
+    except Exception:
+        logger.exception("Failed to update transaction date %s", txn_id)
+        await update.message.reply_text("❌ Failed to change date.")
