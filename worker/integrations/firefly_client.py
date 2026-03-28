@@ -75,11 +75,25 @@ async def update_transaction(txn_id: int, payload: dict) -> dict:
     return resp.json()["data"]
 
 
+async def _get_first_rule_group_id() -> int:
+    client = get_client()
+    try:
+        resp = await client.get("/api/v1/rule-groups")
+        resp.raise_for_status()
+        groups = resp.json()["data"]
+        if groups:
+            return int(groups[0]["id"])
+    except Exception:
+        logger.exception("Failed to fetch rule groups")
+    return 1
+
+
 async def create_rule(title: str, trigger_keyword: str, category_name: str) -> dict:
     client = get_client()
+    rule_group_id = await _get_first_rule_group_id()
     payload = {
         "title": title,
-        "rule_group_id": 1,
+        "rule_group_id": rule_group_id,
         "trigger": "store-transaction",
         "active": True,
         "strict": False,
