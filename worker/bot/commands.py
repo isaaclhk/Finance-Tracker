@@ -92,11 +92,13 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ibkr_data and ibkr_data["total_equity"] > 0:
             updated = await _update_account_balance("IBKR", ibkr_data["total_equity"])
             if updated:
-                ibkr_msg = f"\n📈  IBKR: {updated}"
+                ibkr_msg = f"\n📈 IBKR: {updated}"
             else:
-                ibkr_msg = f"\n📈  IBKR: ${ibkr_data['total_equity']:,.2f} (no change)"
+                ibkr_msg = f"\n📈 IBKR: ${ibkr_data['total_equity']:,.2f} (no change)"
     except ibkr_flex.IBKRTokenError as e:
-        ibkr_msg = f"\n⚠️  IBKR token expired: {e}"
+        ibkr_msg = f"\n⚠️ IBKR token expired: {e}"
+    except Exception:
+        ibkr_msg = "\n📈 IBKR: temporarily unavailable"
 
     lines = ["<b>✅ Done!</b>", "──────────"]
     lines.append(f"📬 <b>{result.new_count}</b> new transaction(s)")
@@ -104,7 +106,7 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if result.pending_review:
         lines.append(f"👆 <b>{len(result.pending_review)}</b> need your input")
     if result.errors:
-        lines.append(f"⚠️ {result.errors} error(s)")
+        lines.append(f"\n<i>{result.errors} email(s) could not be processed</i>")
     if ibkr_msg:
         lines.append(ibkr_msg)
 
