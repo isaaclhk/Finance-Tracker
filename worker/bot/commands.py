@@ -475,11 +475,11 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args or []
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage: /income <amount> <source> [account]\n"
+            "Usage: /income <amount> <source> [account] [on <date>]\n"
             "Examples:\n"
             "  /income 5000 Salary\n"
-            "  /income 2000 Bonus\n"
-            "  /income 200 Interest ocbc"
+            "  /income 2000 Bonus on yesterday\n"
+            "  /income 200 Interest ocbc on 25 mar"
         )
         return
 
@@ -489,11 +489,38 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid amount. Must be a number.")
         return
 
-    # If last arg looks like an account name (>2 args), use it
-    if len(args) > 2:
-        source = " ".join(args[1:-1])
-        account_name = args[-1]
-        # Check if last arg is actually an account
+    # Split on "on" keyword for date
+    remaining = args[1:]
+    txn_date = date.today()
+    date_label = "today"
+
+    # Find "on" keyword to separate source/account from date
+    on_index = None
+    for i, arg in enumerate(remaining):
+        if arg.lower() == "on":
+            on_index = i
+            break
+
+    if on_index is not None:
+        date_text = " ".join(remaining[on_index + 1 :])
+        remaining = remaining[:on_index]
+
+        if date_text:
+            result = _parse_period(date_text)
+            if result:
+                txn_date = result[0]
+                date_label = result[2]
+            else:
+                # LLM fallback
+                result = await _llm_parse_period(date_text)
+                if result:
+                    txn_date = result[0]
+                    date_label = result[2]
+
+    # Parse source and optional account from remaining args
+    if len(remaining) > 1:
+        source = " ".join(remaining[:-1])
+        account_name = remaining[-1]
         try:
             accounts = await firefly_client.get_accounts()
             matched = None
@@ -506,21 +533,20 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     matched = name
                     break
             if not matched:
-                # Last arg is part of source name, not an account
-                source = " ".join(args[1:])
+                source = " ".join(remaining)
                 matched = salary.DEFAULT_ACCOUNT
         except Exception:
-            source = " ".join(args[1:])
+            source = " ".join(remaining)
             matched = salary.DEFAULT_ACCOUNT
     else:
-        source = " ".join(args[1:])
+        source = " ".join(remaining)
         matched = salary.DEFAULT_ACCOUNT
 
     payload = {
         "transactions": [
             {
                 "type": "deposit",
-                "date": date.today().isoformat(),
+                "date": txn_date.isoformat(),
                 "amount": str(amount),
                 "description": source,
                 "source_name": source,
@@ -529,10 +555,11 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     }
 
+    date_suffix = f" ({date_label})" if date_label != "today" else ""
     try:
         await firefly_client.create_transaction(payload)
         await update.message.reply_text(
-            f"✅ <b>${amount:,.2f}</b> from {source}\n→ {matched}",
+            f"✅ <b>${amount:,.2f}</b> from {source}{date_suffix}\n→ {matched}",
             parse_mode="HTML",
         )
     except Exception:
@@ -690,15 +717,17 @@ HELP_DETAILS = {
         "last updated (last transaction date)."
     ),
     "income": (
-        "<b>📥 /income [amount] [source] [account]</b>\n"
+        "<b>📥 /income [amount] [source] [account] [on date]</b>\n"
         "──────────\n"
         "Record one-off incoming money.\n"
         "Default account: UOB One Account.\n"
+        "Default date: today.\n"
         "\n"
         "<b>Examples:</b>\n"
         "  /income 5000 Salary\n"
-        "  /income 2000 Bonus\n"
-        "  /income 200 Interest ocbc"
+        "  /income 2000 Bonus on yesterday\n"
+        "  /income 200 Interest ocbc on 25 mar\n"
+        "  /income 500 Refund on last friday"
     ),
     "salary": (
         "<b>💼 /salary</b>\n"
