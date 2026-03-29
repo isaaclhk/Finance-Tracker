@@ -7,6 +7,11 @@ from decimal import Decimal
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from worker.bot.telegram_bot import (
+    ask_category_confirmation,
+    notify_unknown_account,
+    send_large_amount_confirmation,
+)
 from worker.integrations import firefly_client, ibkr_flex
 from worker.services import salary
 from worker.services.transaction_processor import process_new_emails
@@ -99,6 +104,18 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ibkr_msg = f"\n⚠️ IBKR token expired: {e}"
     except Exception:
         ibkr_msg = "\n📈 IBKR: temporarily unavailable"
+
+    for item in result.pending_review:
+        if item["type"] == "category_confirmation":
+            await ask_category_confirmation(
+                transaction=item["transaction"],
+                suggested_category=item.get("suggested_category"),
+                parsed=item["parsed"],
+            )
+            if item.get("large_amount"):
+                await send_large_amount_confirmation(item["parsed"])
+        elif item["type"] == "unknown_account":
+            await notify_unknown_account(item["parsed"])
 
     lines = ["<b>✅ Done!</b>", "──────────"]
     lines.append(f"📬 <b>{result.new_count}</b> new transaction(s)")
