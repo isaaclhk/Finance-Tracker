@@ -2,9 +2,12 @@ import base64
 import json
 
 from worker.integrations.gmail_client import (
+    Email,
+    HistoryExpiredError,
+    _compute_latest_timestamp,
     _extract_body,
-    is_processed,
-    mark_processed,
+    _load_cursor,
+    save_cursor,
 )
 
 
@@ -44,36 +47,65 @@ def test_extract_body_empty():
     assert result == ""
 
 
-def test_is_processed_empty(tmp_path, monkeypatch):
+def test_load_cursor_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "worker.integrations.gmail_client.PROCESSED_IDS_FILE",
-        str(tmp_path / "processed.json"),
+        "worker.integrations.gmail_client.CURSOR_FILE",
+        str(tmp_path / "nonexistent.json"),
     )
-    assert is_processed("msg-1") is False
+    cursor = _load_cursor()
+    assert cursor == {"history_id": None, "last_timestamp": None}
 
 
-def test_mark_and_is_processed(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "worker.integrations.gmail_client.PROCESSED_IDS_FILE",
-        str(tmp_path / "processed.json"),
-    )
-    mark_processed("msg-1")
-    assert is_processed("msg-1") is True
-    assert is_processed("msg-2") is False
+def test_load_cursor_old_format(tmp_path, monkeypatch):
+    cursor_file = tmp_path / "cursor.json"
+    cursor_file.write_text('{"last_timestamp": "2026-03-25T14:30:00"}')
+    monkeypatch.setattr("worker.integrations.gmail_client.CURSOR_FILE", str(cursor_file))
+    cursor = _load_cursor()
+    assert cursor == {"history_id": None, "last_timestamp": "2026-03-25T14:30:00"}
 
 
-def test_mark_processed_caps_at_max(tmp_path, monkeypatch):
-    processed_file = str(tmp_path / "processed.json")
-    monkeypatch.setattr("worker.integrations.gmail_client.PROCESSED_IDS_FILE", processed_file)
-    monkeypatch.setattr("worker.integrations.gmail_client.MAX_PROCESSED_IDS", 5)
+def test_load_cursor_new_format(tmp_path, monkeypatch):
+    cursor_file = tmp_path / "cursor.json"
+    cursor_file.write_text('{"history_id": 12345, "last_timestamp": "2026-03-25T14:30:00"}')
+    monkeypatch.setattr("worker.integrations.gmail_client.CURSOR_FILE", str(cursor_file))
+    cursor = _load_cursor()
+    assert cursor == {"history_id": 12345, "last_timestamp": "2026-03-25T14:30:00"}
 
-    for i in range(7):
-        mark_processed(f"msg-{i}")
 
-    with open(processed_file) as f:
-        ids = json.load(f)
-    assert len(ids) == 5
-    # Oldest IDs should have been pruned
-    assert "msg-0" not in ids
-    assert "msg-1" not in ids
-    assert "msg-6" in ids
+def test_save_cursor_writes_both_fields(tmp_path, monkeypatch):
+    cursor_file = str(tmp_path / "cursor.json")
+    monkeypatch.setattr("worker.integrations.gmail_client.CURSOR_FILE", cursor_file)
+
+    save_cursor(99999, "2026-03-29T10:00:00")
+
+    with open(cursor_file) as f:
+        data = json.load(f)
+    assert data == {"history_id": 99999, "last_timestamp": "2026-03-29T10:00:00"}
+
+
+def test_save_cursor_without_timestamp(tmp_path, monkeypatch):
+    cursor_file = str(tmp_path / "cursor.json")
+    monkeypatch.setattr("worker.integrations.gmail_client.CURSOR_FILE", cursor_file)
+
+    save_cursor(99999)
+
+    with open(cursor_file) as f:
+        data = json.load(f)
+    assert data == {"history_id": 99999}
+
+
+def test_compute_latest_timestamp():
+    emails = [
+        Email("1", "", "", "", "2026-03-25T10:00:00"),
+        Email("2", "", "", "", "2026-03-25T14:00:00"),
+        Email("3", "", "", "", "2026-03-25T12:00:00"),
+    ]
+    assert _compute_latest_timestamp(emails, None) == "2026-03-25T14:00:00"
+
+
+def test_compute_latest_timestamp_empty():
+    assert _compute_latest_timestamp([], "fallback") == "fallback"
+
+
+def test_history_expired_error_is_exception():
+    assert issubclass(HistoryExpiredError, Exception)

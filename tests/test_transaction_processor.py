@@ -69,14 +69,10 @@ async def test_process_new_emails_success():
         patch(
             "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
             new_callable=AsyncMock,
-            return_value=([email], None),
+            return_value=([email], 99999, "2026-03-25T14:15:00"),
         ),
         patch(
-            "worker.services.transaction_processor.gmail_client.is_processed",
-            return_value=False,
-        ),
-        patch(
-            "worker.services.transaction_processor.gmail_client.mark_processed",
+            "worker.services.transaction_processor.gmail_client.save_cursor",
         ),
         patch(
             "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
@@ -126,14 +122,10 @@ async def test_process_skips_duplicates():
         patch(
             "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
             new_callable=AsyncMock,
-            return_value=([email], None),
+            return_value=([email], 99999, "2026-03-25"),
         ),
         patch(
-            "worker.services.transaction_processor.gmail_client.is_processed",
-            return_value=False,
-        ),
-        patch(
-            "worker.services.transaction_processor.gmail_client.mark_processed",
+            "worker.services.transaction_processor.gmail_client.save_cursor",
         ),
         patch(
             "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
@@ -151,39 +143,3 @@ async def test_process_skips_duplicates():
         result = await process_new_emails()
 
     assert result.new_count == 0
-
-
-@pytest.mark.asyncio
-async def test_process_skips_already_processed_email():
-    email = Email(
-        message_id="already-seen-123",
-        sender="alerts@uob.com.sg",
-        subject="Alert",
-        body="$5.50 at TEST",
-        timestamp="2026-03-25",
-    )
-
-    mock_parse = AsyncMock()
-
-    with (
-        patch(
-            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
-            new_callable=AsyncMock,
-            return_value=([email], None),
-        ),
-        patch(
-            "worker.services.transaction_processor.gmail_client.is_processed",
-            return_value=True,
-        ),
-        patch(
-            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
-            mock_parse,
-        ),
-    ):
-        from worker.services.transaction_processor import process_new_emails
-
-        result = await process_new_emails()
-
-    assert result.new_count == 0
-    assert result.skipped == 1
-    mock_parse.assert_not_called()
