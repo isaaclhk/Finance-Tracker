@@ -13,7 +13,7 @@ Manual updates (/update) -----------------------^                |
 ```
 
 1. Bank transaction emails arrive in Gmail with a "Bank Alerts" label
-2. Worker polls Gmail every 5 minutes, parses emails with GPT-4.1 nano
+2. Worker polls Gmail every 5 minutes via History API (incremental), parses emails with GPT-4.1 nano
 3. Transactions are validated, deduplicated, and stored in Firefly III
 4. New merchants prompt category confirmation via Telegram inline keyboard
 5. Confirmed categories auto-create Firefly III rules for future transactions

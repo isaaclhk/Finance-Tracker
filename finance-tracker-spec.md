@@ -236,7 +236,7 @@ CMD ["uv", "run", "uvicorn", "worker.main:app", "--host", "0.0.0.0", "--port", "
   - UOB: `unialerts@uobgroup.com`
   - Trust Bank: TBD — verify actual sender address
 - Multiple Gmail accounts forward alerts to one primary account; Gmail filters label them all as "Bank Alerts"
-- Track the last processed email timestamp to avoid reprocessing (stored in a JSON cursor file)
+- Track polling state via Gmail History API (`historyId`) for exact incremental polling — only fetches genuinely new messages each cycle (stored in a JSON cursor file, falls back to timestamp-based search if `historyId` expires)
 - Supports email attachments extraction (for potential future use)
 
 ### Universal LLM Email Parser (`llm_email_parser.py`)
