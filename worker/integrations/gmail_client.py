@@ -204,7 +204,7 @@ def _fetch_via_history(service, label_id: str, start_history_id: int) -> tuple[l
                 "userId": "me",
                 "startHistoryId": start_history_id,
                 "labelId": label_id,
-                "historyTypes": ["messageAdded"],
+                "historyTypes": ["messageAdded", "labelAdded"],
             }
             if page_token:
                 params["pageToken"] = page_token
@@ -219,6 +219,10 @@ def _fetch_via_history(service, label_id: str, start_history_id: int) -> tuple[l
 
         for record in response.get("history", []):
             for added in record.get("messagesAdded", []):
+                msg = added.get("message", {})
+                if msg.get("id"):
+                    message_ids.add(msg["id"])
+            for added in record.get("labelsAdded", []):
                 msg = added.get("message", {})
                 if msg.get("id"):
                     message_ids.add(msg["id"])
