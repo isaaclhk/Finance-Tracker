@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 CURSOR_FILE = os.getenv("GMAIL_CURSOR_FILE", "/app/data/gmail_cursor.json")
+PROCESSED_IDS_FILE = os.getenv("GMAIL_PROCESSED_IDS_FILE", "/app/data/gmail_processed_ids.json")
+MAX_PROCESSED_IDS = 500
 
 
 @dataclass
@@ -47,6 +49,29 @@ def save_cursor(timestamp: str):
     os.makedirs(os.path.dirname(CURSOR_FILE), exist_ok=True)
     with open(CURSOR_FILE, "w") as f:
         json.dump({"last_timestamp": timestamp}, f)
+
+
+def _load_processed_ids() -> list[str]:
+    try:
+        with open(PROCESSED_IDS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def is_processed(message_id: str) -> bool:
+    return message_id in set(_load_processed_ids())
+
+
+def mark_processed(message_id: str):
+    ids = _load_processed_ids()
+    ids.append(message_id)
+    # Keep only the most recent IDs to prevent unbounded growth
+    if len(ids) > MAX_PROCESSED_IDS:
+        ids = ids[-MAX_PROCESSED_IDS:]
+    os.makedirs(os.path.dirname(PROCESSED_IDS_FILE), exist_ok=True)
+    with open(PROCESSED_IDS_FILE, "w") as f:
+        json.dump(ids, f)
 
 
 def _get_label_id(service) -> str | None:

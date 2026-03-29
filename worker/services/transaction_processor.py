@@ -62,13 +62,19 @@ async def process_new_emails() -> ProcessResult:
 
     for email in emails:
         try:
+            if gmail_client.is_processed(email.message_id):
+                result.skipped += 1
+                continue
+
             parsed = await llm_email_parser.parse_and_categorize(email.body, email.sender)
             if parsed is None:
+                gmail_client.mark_processed(email.message_id)
                 result.skipped += 1
                 continue
 
             validated, warnings = validate_parsed_transaction(parsed)
             if validated is None:
+                gmail_client.mark_processed(email.message_id)
                 logger.warning("Validation failed: %s", warnings)
                 result.skipped += 1
                 continue
@@ -84,6 +90,7 @@ async def process_new_emails() -> ProcessResult:
                 continue
 
             if await is_duplicate(validated):
+                gmail_client.mark_processed(email.message_id)
                 continue
 
             payload = _build_firefly_payload(validated, source_account)
@@ -92,6 +99,7 @@ async def process_new_emails() -> ProcessResult:
             suggested = validated.get("suggested_category")
             category, needs_confirmation = categorize(firefly_txn, suggested)
 
+            gmail_client.mark_processed(email.message_id)
             result.new_count += 1
 
             if needs_confirmation:
