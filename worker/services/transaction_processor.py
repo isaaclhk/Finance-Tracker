@@ -4,7 +4,11 @@ from dataclasses import dataclass, field
 from worker.integrations import firefly_client, gmail_client
 from worker.parsers import llm_email_parser
 from worker.parsers.validator import WARNING_LARGE_AMOUNT, validate_parsed_transaction
-from worker.services.account_mapper import get_firefly_transaction_type, map_to_firefly_account
+from worker.services.account_mapper import (
+    ACCOUNT_MAP,
+    get_firefly_transaction_type,
+    map_to_firefly_account,
+)
 from worker.services.categorizer import categorize
 from worker.utils.dedup import is_duplicate
 
@@ -23,7 +27,14 @@ class ProcessResult:
 def _build_firefly_payload(validated: dict, source_account: str) -> dict:
     firefly_type, _, _ = get_firefly_transaction_type(validated.get("transaction_type", "unknown"))
 
-    merchant = validated.get("merchant", "Unknown")
+    merchant = validated.get("merchant") or "Unknown"
+
+    # fund_transfer to an external party (not in ACCOUNT_MAP) should be a withdrawal,
+    # not a Firefly transfer (which requires both accounts to be the user's own).
+    if firefly_type == "transfer" and validated.get("transaction_type") == "fund_transfer":
+        known_accounts = set(ACCOUNT_MAP.values())
+        if merchant not in known_accounts:
+            firefly_type = "withdrawal"
 
     txn = {
         "type": firefly_type,
@@ -43,7 +54,6 @@ def _build_firefly_payload(validated: dict, source_account: str) -> dict:
 
     if firefly_type == "transfer":
         # For bill_payment: source is bank account, destination is credit card (merchant name)
-        # For fund_transfer: source is bank account, destination is the recipient
         txn["source_name"] = source_account
         txn["destination_name"] = merchant
 
