@@ -15,7 +15,7 @@ TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
 
 # OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_PARSE_MODEL = os.getenv("OPENAI_PARSE_MODEL", "gpt-4.1-nano")
+OPENAI_PARSE_MODEL = os.getenv("OPENAI_PARSE_MODEL", "gpt-4.1-mini")
 OPENAI_QUERY_MODEL = os.getenv("OPENAI_QUERY_MODEL", "gpt-4.1-mini")
 
 # IBKR
