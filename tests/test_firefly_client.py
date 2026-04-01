@@ -13,10 +13,13 @@ def reset_client():
     firefly_client._client = None
 
 
-def _mock_response(data, status_code=200):
+def _mock_response(data, status_code=200, total_pages=None):
     resp = MagicMock()
     resp.status_code = status_code
-    resp.json.return_value = {"data": data}
+    body = {"data": data}
+    if total_pages is not None:
+        body["meta"] = {"pagination": {"total_pages": total_pages}}
+    resp.json.return_value = body
     resp.raise_for_status = MagicMock()
     return resp
 
@@ -25,13 +28,17 @@ def _mock_response(data, status_code=200):
 async def test_get_accounts():
     accounts = [{"id": "1", "attributes": {"name": "OCBC Savings"}}]
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(return_value=_mock_response(accounts))
+    mock_client.get = AsyncMock(
+        return_value=_mock_response(accounts, total_pages=1)
+    )
 
     with patch.object(firefly_client, "get_client", return_value=mock_client):
         result = await firefly_client.get_accounts()
 
     assert result == accounts
-    mock_client.get.assert_called_once_with("/api/v1/accounts", params={"type": "all"})
+    mock_client.get.assert_called_once_with(
+        "/api/v1/accounts", params={"type": "all", "page": 1}
+    )
 
 
 @pytest.mark.asyncio

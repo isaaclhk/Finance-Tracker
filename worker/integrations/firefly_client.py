@@ -34,9 +34,18 @@ async def close():
 
 async def get_accounts() -> list[dict]:
     client = get_client()
-    resp = await client.get("/api/v1/accounts", params={"type": "all"})
-    resp.raise_for_status()
-    return resp.json()["data"]
+    all_data: list[dict] = []
+    page = 1
+    while True:
+        resp = await client.get("/api/v1/accounts", params={"type": "all", "page": page})
+        resp.raise_for_status()
+        body = resp.json()
+        all_data.extend(body["data"])
+        total_pages = body.get("meta", {}).get("pagination", {}).get("total_pages", 1)
+        if page >= total_pages:
+            break
+        page += 1
+    return all_data
 
 
 async def get_transactions(
