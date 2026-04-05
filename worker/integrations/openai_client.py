@@ -40,7 +40,7 @@ Return JSON with exactly these fields:
 {{
   "amount": number (SGD value, no currency symbol),
   "merchant": string (merchant or payee name, cleaned up),
-  "date": string (ISO format YYYY-MM-DD),
+  "date": string (YYYY-MM-DD — dates in SG alerts are DD/MM, not MM/DD),
   "time": string (HH:MM or null),
   "card_or_account": string (last 4 digits of card or account identifier),
   "transaction_type": {_txn_types_str},
