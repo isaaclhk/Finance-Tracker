@@ -61,17 +61,15 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
     adjustment_account = "Market Value Adjustment"
 
     if acct_type == "liabilities":
-        # Liability accounts: use withdrawal (pay off) or deposit (add charge)
+        # Liability: deposits decrease balance, withdrawals increase it
         if diff > 0:
-            # Balance becoming more negative = new charges
-            txn_type = "withdrawal"
-            source = acct_name
-            destination = adjustment_account
-        else:
-            # Balance becoming less negative = payment
             txn_type = "deposit"
             source = adjustment_account
             destination = acct_name
+        else:
+            txn_type = "withdrawal"
+            source = acct_name
+            destination = adjustment_account
     else:
         # Asset accounts: use transfer to/from adjustment account
         txn_type = "transfer"
