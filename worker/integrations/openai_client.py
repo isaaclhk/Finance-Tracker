@@ -43,6 +43,7 @@ Return JSON with exactly these fields:
   "date": string (YYYY-MM-DD — dates in SG alerts are DD/MM, not MM/DD),
   "time": string (HH:MM or null),
   "card_or_account": string (last 4 digits of card or account identifier),
+  "destination_account": string (last 4 of destination card for bill payments, or null),
   "transaction_type": {_txn_types_str},
   "bank": "DBS" | "OCBC" | "UOB" | "Trust" | "Syfe" | "unknown",
   "suggested_category": one of: {_categories_str} | null

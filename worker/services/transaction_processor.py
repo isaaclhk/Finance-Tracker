@@ -53,9 +53,11 @@ def _build_firefly_payload(validated: dict, source_account: str) -> dict:
         txn["destination_name"] = source_account
 
     if firefly_type == "transfer":
-        # For bill_payment: source is bank account, destination is credit card (merchant name)
+        # For bill_payment: source is bank account, destination is credit card
         txn["source_name"] = source_account
-        txn["destination_name"] = merchant
+        dest_hint = validated.get("destination_account", "")
+        dest_account = ACCOUNT_MAP.get(dest_hint) if dest_hint else None
+        txn["destination_name"] = dest_account or merchant
 
     return {"transactions": [txn]}
 
