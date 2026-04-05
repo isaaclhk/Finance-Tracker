@@ -57,19 +57,35 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
     if abs(diff) < Decimal("0.01"):
         return None
 
-    # Use transfer so it doesn't count as income/expense
+    acct_type = matched["attributes"].get("type", "")
     adjustment_account = "Market Value Adjustment"
-    if diff > 0:
-        source = adjustment_account
-        destination = acct_name
+
+    if acct_type == "liabilities":
+        # Liability accounts: use withdrawal (pay off) or deposit (add charge)
+        if diff > 0:
+            # Balance becoming more negative = new charges
+            txn_type = "withdrawal"
+            source = acct_name
+            destination = adjustment_account
+        else:
+            # Balance becoming less negative = payment
+            txn_type = "deposit"
+            source = adjustment_account
+            destination = acct_name
     else:
-        source = acct_name
-        destination = adjustment_account
+        # Asset accounts: use transfer to/from adjustment account
+        txn_type = "transfer"
+        if diff > 0:
+            source = adjustment_account
+            destination = acct_name
+        else:
+            source = acct_name
+            destination = adjustment_account
 
     payload = {
         "transactions": [
             {
-                "type": "transfer",
+                "type": txn_type,
                 "date": date.today().isoformat(),
                 "amount": str(abs(diff)),
                 "description": f"Balance adjustment for {acct_name}",
