@@ -76,7 +76,9 @@ async def test_create_transaction():
 @pytest.mark.asyncio
 async def test_create_rule():
     rule = {"id": "1", "attributes": {"title": "Auto: BOBER TEA"}}
+    rule_groups = [{"id": "5", "attributes": {"title": "Default"}}]
     mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=_mock_response(rule_groups))
     mock_client.post = AsyncMock(return_value=_mock_response(rule))
 
     with patch.object(firefly_client, "get_client", return_value=mock_client):
