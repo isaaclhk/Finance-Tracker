@@ -125,9 +125,12 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 transaction=item["transaction"],
                 suggested_category=item.get("suggested_category"),
                 parsed=item["parsed"],
+                foreign_info=item.get("foreign_info"),
             )
             if item.get("large_amount"):
-                await send_large_amount_confirmation(item["parsed"])
+                await send_large_amount_confirmation(
+                    item["parsed"], foreign_info=item.get("foreign_info")
+                )
         elif item["type"] == "unknown_account":
             await notify_unknown_account(item["parsed"])
 

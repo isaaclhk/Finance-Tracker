@@ -2,7 +2,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from worker.integrations import openai_client
 
 
@@ -24,6 +23,7 @@ def _make_completion(content: str):
 @pytest.mark.asyncio
 async def test_parse_and_categorize_success():
     expected = {
+        "currency": "SGD",
         "amount": 5.50,
         "merchant": "BOBER TEA",
         "date": "2026-03-25",

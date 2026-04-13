@@ -14,7 +14,7 @@ from worker.bot.telegram_bot import (
     send_message,
 )
 from worker.config import POLL_INTERVAL_MINUTES, TELEGRAM_WEBHOOK_URL
-from worker.integrations import firefly_client, ibkr_flex
+from worker.integrations import exchange_rate, firefly_client, ibkr_flex
 from worker.services.transaction_processor import process_new_emails
 
 logger = logging.getLogger(__name__)
@@ -45,9 +45,12 @@ async def _poll_loop():
                         transaction=item["transaction"],
                         suggested_category=item.get("suggested_category"),
                         parsed=item["parsed"],
+                        foreign_info=item.get("foreign_info"),
                     )
                     if item.get("large_amount"):
-                        await send_large_amount_confirmation(item["parsed"])
+                        await send_large_amount_confirmation(
+                            item["parsed"], foreign_info=item.get("foreign_info")
+                        )
                 elif item["type"] == "unknown_account":
                     await notify_unknown_account(item["parsed"])
 
@@ -155,6 +158,7 @@ async def lifespan(app: FastAPI):
 
     await telegram_app.stop()
     await telegram_app.shutdown()
+    await exchange_rate.close()
     await firefly_client.close()
     logger.info("Worker shut down cleanly")
 

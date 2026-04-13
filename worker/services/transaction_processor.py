@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
-from worker.integrations import firefly_client, gmail_client
+from worker.integrations import exchange_rate, firefly_client, gmail_client
 from worker.parsers import llm_email_parser
 from worker.parsers.validator import WARNING_LARGE_AMOUNT, validate_parsed_transaction
 from worker.services.account_mapper import (
@@ -23,7 +23,9 @@ class ProcessResult:
     errors: int = 0
 
 
-def _build_firefly_payload(validated: dict, source_account: str) -> dict:
+def _build_firefly_payload(
+    validated: dict, source_account: str, foreign_info: dict | None = None
+) -> dict:
     firefly_type, _, _ = get_firefly_transaction_type(validated.get("transaction_type", "unknown"))
 
     merchant = validated.get("merchant") or "Unknown"
@@ -58,6 +60,10 @@ def _build_firefly_payload(validated: dict, source_account: str) -> dict:
         dest_account = ACCOUNT_MAP.get(dest_hint) if dest_hint else None
         txn["destination_name"] = dest_account or merchant
 
+    if foreign_info and foreign_info.get("rate") is not None:
+        txn["foreign_currency_code"] = foreign_info["currency"]
+        txn["foreign_amount"] = str(foreign_info["original_amount"])
+
     return {"transactions": [txn]}
 
 
@@ -78,6 +84,26 @@ async def process_new_emails() -> ProcessResult:
                 result.skipped += 1
                 continue
 
+            # Convert foreign currency to SGD before validation
+            foreign_info = None
+            currency = (parsed.get("currency") or "SGD").upper()
+            if currency != "SGD" and parsed.get("amount") is not None:
+                conversion = await exchange_rate.convert_to_sgd(parsed["amount"], currency)
+                if conversion is not None:
+                    sgd_amount, rate = conversion
+                    foreign_info = {
+                        "currency": currency,
+                        "original_amount": parsed["amount"],
+                        "rate": rate,
+                    }
+                    parsed["amount"] = sgd_amount
+                else:
+                    foreign_info = {
+                        "currency": currency,
+                        "original_amount": parsed["amount"],
+                        "rate": None,
+                    }
+
             validated, warnings = validate_parsed_transaction(parsed)
             if validated is None:
                 logger.warning("Validation failed: %s", warnings)
@@ -97,7 +123,7 @@ async def process_new_emails() -> ProcessResult:
             if await is_duplicate(validated):
                 continue
 
-            payload = _build_firefly_payload(validated, source_account)
+            payload = _build_firefly_payload(validated, source_account, foreign_info)
             firefly_txn = await firefly_client.create_transaction(payload)
 
             suggested = validated.get("suggested_category")
@@ -111,6 +137,7 @@ async def process_new_emails() -> ProcessResult:
                     "suggested_category": category,
                     "parsed": validated,
                     "large_amount": WARNING_LARGE_AMOUNT in warnings,
+                    "foreign_info": foreign_info,
                 }
             )
 

@@ -114,17 +114,25 @@ async def notify_unknown_account(parsed: dict):
     )
 
 
-async def send_large_amount_confirmation(parsed: dict):
+async def send_large_amount_confirmation(parsed: dict, foreign_info: dict | None = None):
     merchant = parsed.get("merchant", "Unknown")
     amount = parsed.get("amount", 0)
+    extra = ""
+    if foreign_info and foreign_info.get("rate") is not None:
+        fc = foreign_info["currency"]
+        fa = foreign_info["original_amount"]
+        extra = f"\n💱 {fc} {fa:,.2f}"
     await send_message(
-        f"💰 Wah, big purchase!\n──────────\n🏪 {merchant}\n💵 <b>${amount:,.2f}</b>",
+        f"💰 Wah, big purchase!\n──────────\n🏪 {merchant}\n💵 <b>${amount:,.2f}</b>{extra}",
         parse_mode="HTML",
     )
 
 
 async def ask_category_confirmation(
-    transaction: dict, suggested_category: str | None, parsed: dict
+    transaction: dict,
+    suggested_category: str | None,
+    parsed: dict,
+    foreign_info: dict | None = None,
 ):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -140,11 +148,20 @@ async def ask_category_confirmation(
 
     time_str = f" {txn_time}" if txn_time else ""
 
+    amount_line = f"💵 <b>${amount:,.2f}</b> · {bank} *{card}"
+    if foreign_info:
+        fc = foreign_info["currency"]
+        fa = foreign_info["original_amount"]
+        if foreign_info.get("rate") is not None:
+            amount_line += f"\n    ({fc} {fa:,.2f} @ {foreign_info['rate']:.4f})"
+        else:
+            amount_line += f"\n    ⚠️ {fc} {fa:,.2f} (rate lookup failed)"
+
     text = (
         f"<b>🆕 New transaction</b>\n"
         f"──────────\n"
         f"🏪 {merchant}\n"
-        f"💵 <b>${amount:,.2f}</b> · {bank} *{card}\n"
+        f"{amount_line}\n"
         f"📅 {txn_date}{time_str}\n"
         f"──────────\n"
         f"💡 I think is: <b>{suggested_category or 'not sure leh'}</b>"

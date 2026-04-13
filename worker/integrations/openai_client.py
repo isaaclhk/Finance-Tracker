@@ -38,7 +38,8 @@ _categories_str = " | ".join(f'"{c}"' for c in CATEGORIES)
 PARSE_SYSTEM_PROMPT = f"""Extract transaction details from this bank email alert.
 Return JSON with exactly these fields:
 {{
-  "amount": number (SGD value, no currency symbol),
+  "currency": string (ISO 4217 code e.g. "SGD", "USD", "JPY" — default "SGD"),
+  "amount": number (transaction value in the stated currency, no currency symbol),
   "merchant": string (merchant or payee name, cleaned up),
   "date": string (YYYY-MM-DD — dates in SG alerts are DD/MM, not MM/DD),
   "time": string (HH:MM or null),
