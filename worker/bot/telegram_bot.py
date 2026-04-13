@@ -141,7 +141,7 @@ async def ask_category_confirmation(
     time_str = f" {txn_time}" if txn_time else ""
 
     text = (
-        f"<b>🆕 New merchant!</b>\n"
+        f"<b>🆕 New transaction</b>\n"
         f"──────────\n"
         f"🏪 {merchant}\n"
         f"💵 <b>${amount:,.2f}</b> · {bank} *{card}\n"

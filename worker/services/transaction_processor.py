@@ -9,7 +9,7 @@ from worker.services.account_mapper import (
     get_firefly_transaction_type,
     map_to_firefly_account,
 )
-from worker.services.categorizer import categorize
+from worker.services.categorizer import get_suggested_category
 from worker.utils.dedup import is_duplicate
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProcessResult:
     new_count: int = 0
-    auto_categorized: int = 0
     pending_review: list[dict] = field(default_factory=list)
     skipped: int = 0
     errors: int = 0
@@ -102,22 +101,18 @@ async def process_new_emails() -> ProcessResult:
             firefly_txn = await firefly_client.create_transaction(payload)
 
             suggested = validated.get("suggested_category")
-            category, needs_confirmation = categorize(firefly_txn, suggested)
+            category = get_suggested_category(firefly_txn, suggested)
 
             result.new_count += 1
-
-            if needs_confirmation:
-                result.pending_review.append(
-                    {
-                        "type": "category_confirmation",
-                        "transaction": firefly_txn,
-                        "suggested_category": category,
-                        "parsed": validated,
-                        "large_amount": WARNING_LARGE_AMOUNT in warnings,
-                    }
-                )
-            else:
-                result.auto_categorized += 1
+            result.pending_review.append(
+                {
+                    "type": "category_confirmation",
+                    "transaction": firefly_txn,
+                    "suggested_category": category,
+                    "parsed": validated,
+                    "large_amount": WARNING_LARGE_AMOUNT in warnings,
+                }
+            )
 
         except Exception:
             logger.exception("Failed to process email %s", email.message_id)

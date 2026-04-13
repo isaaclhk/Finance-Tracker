@@ -2,7 +2,6 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from worker.integrations import firefly_client
 
 
@@ -28,17 +27,13 @@ def _mock_response(data, status_code=200, total_pages=None):
 async def test_get_accounts():
     accounts = [{"id": "1", "attributes": {"name": "OCBC Savings"}}]
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=_mock_response(accounts, total_pages=1)
-    )
+    mock_client.get = AsyncMock(return_value=_mock_response(accounts, total_pages=1))
 
     with patch.object(firefly_client, "get_client", return_value=mock_client):
         result = await firefly_client.get_accounts()
 
     assert result == accounts
-    mock_client.get.assert_called_once_with(
-        "/api/v1/accounts", params={"type": "all", "page": 1}
-    )
+    mock_client.get.assert_called_once_with("/api/v1/accounts", params={"type": "all", "page": 1})
 
 
 @pytest.mark.asyncio
@@ -71,20 +66,6 @@ async def test_create_transaction():
 
     assert result == created
     mock_client.post.assert_called_once_with("/api/v1/transactions", json=payload)
-
-
-@pytest.mark.asyncio
-async def test_create_rule():
-    rule = {"id": "1", "attributes": {"title": "Auto: BOBER TEA"}}
-    rule_groups = [{"id": "5", "attributes": {"title": "Default"}}]
-    mock_client = AsyncMock()
-    mock_client.get = AsyncMock(return_value=_mock_response(rule_groups))
-    mock_client.post = AsyncMock(return_value=_mock_response(rule))
-
-    with patch.object(firefly_client, "get_client", return_value=mock_client):
-        result = await firefly_client.create_rule("Auto: BOBER TEA", "BOBER TEA", "Food & Drink")
-
-    assert result == rule
 
 
 @pytest.mark.asyncio

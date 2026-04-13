@@ -53,9 +53,8 @@ async def _poll_loop():
 
             if result.new_count > 0:
                 logger.info(
-                    "Processed %d new transactions (%d auto, %d pending)",
+                    "Processed %d new transactions (%d pending)",
                     result.new_count,
-                    result.auto_categorized,
                     len(result.pending_review),
                 )
         except Exception:

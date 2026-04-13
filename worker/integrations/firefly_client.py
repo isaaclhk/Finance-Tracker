@@ -84,52 +84,6 @@ async def update_transaction(txn_id: int, payload: dict) -> dict:
     return resp.json()["data"]
 
 
-async def _get_first_rule_group_id() -> int:
-    client = get_client()
-    resp = await client.get("/api/v1/rule-groups")
-    resp.raise_for_status()
-    groups = resp.json()["data"]
-    if groups:
-        return int(groups[0]["id"])
-
-    # No rule groups exist — create one
-    create_resp = await client.post(
-        "/api/v1/rule-groups",
-        json={"title": "Auto-categorization", "active": True},
-    )
-    create_resp.raise_for_status()
-    return int(create_resp.json()["data"]["id"])
-
-
-async def create_rule(title: str, trigger_keyword: str, category_name: str) -> dict:
-    client = get_client()
-    rule_group_id = await _get_first_rule_group_id()
-    payload = {
-        "title": title,
-        "rule_group_id": rule_group_id,
-        "trigger": "store-transaction",
-        "active": True,
-        "strict": False,
-        "triggers": [
-            {
-                "type": "description_contains",
-                "value": trigger_keyword,
-            }
-        ],
-        "actions": [
-            {
-                "type": "set_category",
-                "value": category_name,
-            }
-        ],
-    }
-    resp = await client.post("/api/v1/rules", json=payload)
-    if resp.status_code == 422:
-        logger.error("Firefly III rejected rule: %s", resp.text)
-    resp.raise_for_status()
-    return resp.json()["data"]
-
-
 async def get_categories() -> list[dict]:
     client = get_client()
     resp = await client.get("/api/v1/categories")

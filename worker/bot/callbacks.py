@@ -6,7 +6,6 @@ from telegram.ext import ContextTypes
 
 from worker.integrations import firefly_client
 from worker.integrations.openai_client import CATEGORIES
-from worker.services.categorizer import create_auto_rule
 
 logger = logging.getLogger(__name__)
 
@@ -89,19 +88,7 @@ async def _apply_category(query, txn_id: str, category: str):
         await query.edit_message_text("Failed to categorize transaction.")
         return
 
-    # Extract merchant from original message for auto-rule
-    # Message format: line 0 = header, line 1 = separator, line 2 = "🏪 MERCHANT"
     original_text = query.message.text or ""
-    lines = original_text.split("\n")
-    merchant = ""
-    for line in lines:
-        if line.startswith("🏪"):
-            merchant = line.replace("🏪", "").strip()
-            break
-
-    if merchant:
-        await create_auto_rule(merchant, category)
-
     await query.edit_message_text(f"{original_text}\n\n✅ Ok, tagged as {category}!")
 
 

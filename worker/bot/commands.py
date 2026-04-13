@@ -133,7 +133,6 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines = ["<b>✅ Done!</b>", "──────────"]
     lines.append(f"📬 <b>{result.new_count}</b> new transaction(s)")
-    lines.append(f"🏷️ <b>{result.auto_categorized}</b> auto-categorized")
     if result.pending_review:
         lines.append(f"👆 <b>{len(result.pending_review)}</b> need your input")
     if result.errors:
