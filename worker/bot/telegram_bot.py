@@ -128,6 +128,23 @@ async def send_large_amount_confirmation(parsed: dict, foreign_info: dict | None
     )
 
 
+async def notify_pending_reviews(pending_review: list[dict]):
+    for item in pending_review:
+        if item["type"] == "category_confirmation":
+            await ask_category_confirmation(
+                transaction=item["transaction"],
+                suggested_category=item.get("suggested_category"),
+                parsed=item["parsed"],
+                foreign_info=item.get("foreign_info"),
+            )
+            if item.get("large_amount"):
+                await send_large_amount_confirmation(
+                    item["parsed"], foreign_info=item.get("foreign_info")
+                )
+        elif item["type"] == "unknown_account":
+            await notify_unknown_account(item["parsed"])
+
+
 async def ask_category_confirmation(
     transaction: dict,
     suggested_category: str | None,

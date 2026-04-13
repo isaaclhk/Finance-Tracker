@@ -9,7 +9,6 @@ from worker.services.account_mapper import (
     get_firefly_transaction_type,
     map_to_firefly_account,
 )
-from worker.services.categorizer import get_suggested_category
 from worker.utils.dedup import is_duplicate
 
 logger = logging.getLogger(__name__)
@@ -126,8 +125,10 @@ async def process_new_emails() -> ProcessResult:
             payload = _build_firefly_payload(validated, source_account, foreign_info)
             firefly_txn = await firefly_client.create_transaction(payload)
 
+            # Pick the best category suggestion: Firefly rule match > LLM > None
             suggested = validated.get("suggested_category")
-            category = get_suggested_category(firefly_txn, suggested)
+            firefly_txns = firefly_txn.get("attributes", {}).get("transactions", [])
+            category = (firefly_txns[0].get("category_name") if firefly_txns else None) or suggested
 
             result.new_count += 1
             result.pending_review.append(

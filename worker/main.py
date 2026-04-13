@@ -7,10 +7,8 @@ from fastapi import FastAPI, Request
 from telegram import Update
 
 from worker.bot.telegram_bot import (
-    ask_category_confirmation,
     get_application,
-    notify_unknown_account,
-    send_large_amount_confirmation,
+    notify_pending_reviews,
     send_message,
 )
 from worker.config import POLL_INTERVAL_MINUTES, TELEGRAM_WEBHOOK_URL
@@ -39,20 +37,7 @@ async def _poll_loop():
             _last_poll = datetime.now()
             _total_processed += result.new_count
 
-            for item in result.pending_review:
-                if item["type"] == "category_confirmation":
-                    await ask_category_confirmation(
-                        transaction=item["transaction"],
-                        suggested_category=item.get("suggested_category"),
-                        parsed=item["parsed"],
-                        foreign_info=item.get("foreign_info"),
-                    )
-                    if item.get("large_amount"):
-                        await send_large_amount_confirmation(
-                            item["parsed"], foreign_info=item.get("foreign_info")
-                        )
-                elif item["type"] == "unknown_account":
-                    await notify_unknown_account(item["parsed"])
+            await notify_pending_reviews(result.pending_review)
 
             if result.new_count > 0:
                 logger.info(

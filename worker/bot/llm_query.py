@@ -25,7 +25,7 @@ def _format_finance_context(accounts: list[dict], transactions: list[dict]) -> s
         name = attrs.get("name", "?")
         balance = attrs.get("current_balance", "0")
         acct_type = attrs.get("type", "")
-        if acct_type in ("asset", "liability"):
+        if acct_type in ("asset", "liabilities"):
             lines.append(f"  {name}: ${balance}")
 
     lines.append("\nRECENT TRANSACTIONS (last 30 days):")
@@ -120,8 +120,6 @@ async def _handle_pending_date(update, chat_id: int, text: str):
     date_str = new_date.strftime("%d %b %Y")
 
     try:
-        from worker.integrations import firefly_client
-
         await firefly_client.update_transaction(
             int(txn_id),
             {"transactions": [{"date": new_date.isoformat()}]},

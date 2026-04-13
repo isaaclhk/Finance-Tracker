@@ -7,11 +7,7 @@ from decimal import Decimal
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from worker.bot.telegram_bot import (
-    ask_category_confirmation,
-    notify_unknown_account,
-    send_large_amount_confirmation,
-)
+from worker.bot.telegram_bot import notify_pending_reviews
 from worker.integrations import firefly_client, ibkr_flex
 from worker.services import salary
 from worker.services.transaction_processor import process_new_emails
@@ -119,20 +115,7 @@ async def handle_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         ibkr_msg = "\n📈 IBKR: temporarily unavailable"
 
-    for item in result.pending_review:
-        if item["type"] == "category_confirmation":
-            await ask_category_confirmation(
-                transaction=item["transaction"],
-                suggested_category=item.get("suggested_category"),
-                parsed=item["parsed"],
-                foreign_info=item.get("foreign_info"),
-            )
-            if item.get("large_amount"):
-                await send_large_amount_confirmation(
-                    item["parsed"], foreign_info=item.get("foreign_info")
-                )
-        elif item["type"] == "unknown_account":
-            await notify_unknown_account(item["parsed"])
+    await notify_pending_reviews(result.pending_review)
 
     lines = ["<b>✅ Done!</b>", "──────────"]
     lines.append(f"📬 <b>{result.new_count}</b> new transaction(s)")
@@ -319,10 +302,13 @@ async def _llm_parse_period(text: str) -> tuple[date, date, str] | None:
         f"Only return JSON, nothing else."
     )
     try:
+        import json
+
         from worker.integrations import openai_client
 
-        result = await openai_client.parse_and_categorize(prompt, "system")
-        if result and "start" in result and "end" in result:
+        raw = await openai_client.query([{"role": "user", "content": prompt}])
+        result = json.loads(raw)
+        if "start" in result and "end" in result:
             start = date.fromisoformat(result["start"])
             end = date.fromisoformat(result["end"])
             label = result.get("label", text)
@@ -540,7 +526,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
             matched = None
             for acct in accounts:
                 attrs = acct.get("attributes", {})
-                if attrs.get("type") not in ("asset", "liability"):
+                if attrs.get("type") not in ("asset", "liabilities"):
                     continue
                 name = attrs.get("name", "")
                 if account_name.lower() in name.lower():

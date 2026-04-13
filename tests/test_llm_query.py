@@ -45,7 +45,7 @@ def test_format_finance_context():
 
     accounts = [
         {"attributes": {"name": "OCBC Savings", "current_balance": "3210.00", "type": "asset"}},
-        {"attributes": {"name": "UOB Card", "current_balance": "890.30", "type": "liability"}},
+        {"attributes": {"name": "UOB Card", "current_balance": "890.30", "type": "liabilities"}},
     ]
     transactions = [
         {

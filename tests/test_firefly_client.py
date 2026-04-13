@@ -50,7 +50,7 @@ async def test_get_transactions_with_dates():
     assert result == txns
     mock_client.get.assert_called_once_with(
         "/api/v1/transactions",
-        params={"start": "2026-03-01", "end": "2026-03-31"},
+        params={"page": 1, "start": "2026-03-01", "end": "2026-03-31"},
     )
 
 

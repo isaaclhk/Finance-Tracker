@@ -54,17 +54,23 @@ async def get_transactions(
     account_id: int | None = None,
 ) -> list[dict]:
     client = get_client()
-    params: dict = {}
+    params: dict = {"page": 1}
     if start_date:
         params["start"] = start_date.isoformat()
     if end_date:
         params["end"] = end_date.isoformat()
-    if account_id:
-        resp = await client.get(f"/api/v1/accounts/{account_id}/transactions", params=params)
-    else:
-        resp = await client.get("/api/v1/transactions", params=params)
-    resp.raise_for_status()
-    return resp.json()["data"]
+    url = f"/api/v1/accounts/{account_id}/transactions" if account_id else "/api/v1/transactions"
+    all_data: list[dict] = []
+    while True:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        body = resp.json()
+        all_data.extend(body["data"])
+        total_pages = body.get("meta", {}).get("pagination", {}).get("total_pages", 1)
+        if params["page"] >= total_pages:
+            break
+        params["page"] += 1
+    return all_data
 
 
 async def create_transaction(payload: dict) -> dict:
