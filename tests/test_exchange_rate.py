@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from worker.integrations import exchange_rate
 
@@ -53,7 +54,7 @@ async def test_convert_to_sgd_case_insensitive():
 @pytest.mark.asyncio
 async def test_convert_to_sgd_returns_none_on_api_failure():
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(side_effect=Exception("API error"))
+    mock_client.get = AsyncMock(side_effect=httpx.RequestError("API error"))
 
     with patch.object(exchange_rate, "get_client", return_value=mock_client):
         result = await exchange_rate.convert_to_sgd(50.0, "USD")

@@ -2,6 +2,7 @@ import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
+import httpx
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -66,7 +67,7 @@ async def handle_natural_query(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         accounts = await firefly_client.get_accounts()
         transactions = await firefly_client.get_transactions(start_date=start, end_date=today)
-    except Exception:
+    except httpx.HTTPStatusError:
         logger.exception("Failed to fetch financial data for query")
         await update.message.reply_text("Sorry, I couldn't fetch your financial data right now.")
         return
@@ -125,6 +126,6 @@ async def _handle_pending_date(update, chat_id: int, text: str):
             {"transactions": [{"date": new_date.isoformat()}]},
         )
         await update.message.reply_text(f"📅 Date set to {date_str}")
-    except Exception:
+    except httpx.HTTPStatusError:
         logger.exception("Failed to update transaction date %s", txn_id)
         await update.message.reply_text("❌ Failed to change date.")

@@ -2,8 +2,9 @@ import calendar
 import logging
 import re
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
+import httpx
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 async def _update_account_balance(account_name: str, new_balance: float) -> str | None:
     try:
         accounts = await firefly_client.get_accounts()
-    except Exception:
+    except httpx.HTTPStatusError:
         return None
 
     # Only match asset and liability accounts (skip revenue/expense/system accounts)
@@ -92,7 +93,7 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
     try:
         await firefly_client.create_transaction(payload)
         return f"{acct_name}: ${current:,.2f} → ${target:,.2f}"
-    except Exception:
+    except httpx.HTTPStatusError:
         return None
 
 
@@ -166,7 +167,7 @@ async def _get_account_data() -> tuple[list[tuple], list[tuple], Decimal]:
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         assets, liabilities, total = await _get_account_data()
-    except Exception:
+    except httpx.HTTPStatusError:
         await update.message.reply_text("Failed to fetch account balances.")
         return
 
@@ -190,7 +191,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_lastupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         assets, liabilities, _ = await _get_account_data()
-    except Exception:
+    except httpx.HTTPStatusError:
         await update.message.reply_text("Failed to fetch accounts.")
         return
 
@@ -343,7 +344,7 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         txns = await firefly_client.get_transactions(start_date=start, end_date=end)
-    except Exception:
+    except httpx.HTTPStatusError:
         await update.message.reply_text("Failed to fetch transactions.")
         return
 
@@ -406,7 +407,7 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         txns = await firefly_client.get_transactions(start_date=start, end_date=end)
         prev_txns = await firefly_client.get_transactions(start_date=prev_start, end_date=prev_end)
-    except Exception:
+    except httpx.HTTPStatusError:
         await update.message.reply_text("Failed to fetch summary data.")
         return
 
@@ -512,7 +513,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         amount = Decimal(args[0])
-    except Exception:
+    except (ValueError, InvalidOperation):
         await update.message.reply_text("Invalid amount. Must be a number.")
         return
 
@@ -535,7 +536,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not matched:
                 source = " ".join(remaining)
                 matched = salary.DEFAULT_ACCOUNT
-        except Exception:
+        except httpx.HTTPStatusError:
             source = " ".join(remaining)
             matched = salary.DEFAULT_ACCOUNT
     else:
@@ -569,7 +570,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
-    except Exception:
+    except httpx.HTTPStatusError:
         await update.message.reply_text("❌ Failed to record income.")
 
 

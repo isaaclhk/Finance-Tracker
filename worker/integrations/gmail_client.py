@@ -72,7 +72,7 @@ def _get_label_id(service) -> str | None:
         for label in results.get("labels", []):
             if label["name"] == GMAIL_LABEL:
                 return label["id"]
-    except Exception:
+    except HttpError:
         logger.exception("Failed to list Gmail labels")
     return None
 
@@ -111,7 +111,7 @@ def _extract_attachments(service, message_id: str, payload: dict) -> list[dict]:
             )
             data = base64.urlsafe_b64decode(att["data"])
             attachments.append({"filename": filename, "data": data})
-        except Exception:
+        except (HttpError, KeyError):
             logger.exception("Failed to fetch attachment %s", filename)
     return attachments
 
@@ -130,7 +130,7 @@ def _parse_message(service, msg_id: str) -> Email | None:
         try:
             dt = parsedate_to_datetime(date_str)
             timestamp = dt.isoformat()
-        except Exception:
+        except (ValueError, TypeError):
             timestamp = date_str
 
     attachments = _extract_attachments(service, msg_id, msg["payload"])
@@ -168,7 +168,7 @@ def _fetch_via_search(
         results = (
             service.users().messages().list(userId="me", labelIds=[label_id], q=query).execute()
         )
-    except Exception:
+    except HttpError:
         logger.exception("Failed to list Gmail messages")
         return [], None
 

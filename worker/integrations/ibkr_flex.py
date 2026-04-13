@@ -88,7 +88,7 @@ async def fetch_ibkr_data() -> dict | None:
         try:
             resp = await client.get(request_url)
             resp.raise_for_status()
-        except Exception:
+        except httpx.RequestError:
             logger.exception("Failed to request IBKR Flex report")
             return None
 
@@ -110,7 +110,7 @@ async def fetch_ibkr_data() -> dict | None:
         try:
             resp = await client.get(statement_url)
             resp.raise_for_status()
-        except Exception:
+        except httpx.RequestError:
             logger.exception("Failed to fetch IBKR Flex report")
             return None
 

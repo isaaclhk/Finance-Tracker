@@ -2,6 +2,8 @@ import logging
 from datetime import date, timedelta
 from decimal import Decimal
 
+import httpx
+
 from worker.integrations import firefly_client
 
 logger = logging.getLogger(__name__)
@@ -21,7 +23,7 @@ async def is_duplicate(parsed: dict, start_date: date | None = None) -> bool:
             start_date=search_start,
             end_date=search_end,
         )
-    except Exception:
+    except httpx.HTTPStatusError:
         logger.exception("Failed to check for duplicates")
         return False
 

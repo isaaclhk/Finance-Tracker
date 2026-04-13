@@ -1,4 +1,7 @@
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 # Firefly III
 FIREFLY_URL = os.getenv("FIREFLY_URL", "http://localhost:8080")
@@ -46,6 +49,7 @@ def load_personality() -> str:
         with open(SOUL_FILE_PATH) as f:
             return f.read().strip()
     except FileNotFoundError:
+        logger.debug("Soul file not found at %s, using default personality", SOUL_FILE_PATH)
         return "You are a friendly personal finance assistant. Be concise and use SGD."
 
 

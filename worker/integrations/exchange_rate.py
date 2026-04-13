@@ -41,6 +41,6 @@ async def convert_to_sgd(amount: float, currency: str) -> tuple[float, float] | 
         resp.raise_for_status()
         rate = resp.json()["rates"]["SGD"]
         return round(amount * rate, 2), rate
-    except Exception:
+    except (httpx.HTTPStatusError, httpx.RequestError, KeyError):
         logger.exception("Exchange rate conversion failed for %s -> SGD", currency)
         return None

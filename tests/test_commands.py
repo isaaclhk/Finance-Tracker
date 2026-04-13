@@ -1,6 +1,10 @@
 from datetime import date
+from unittest.mock import AsyncMock, patch
 
-from worker.bot.commands import _parse_period
+import pytest
+from worker.bot.commands import _parse_period, _update_account_balance
+
+# ── _parse_period tests ─────────────────────────────────────────────
 
 
 def test_parse_period_today():
@@ -158,4 +162,173 @@ def test_parse_period_month_range_dash():
 
 def test_parse_period_unknown_returns_none():
     result = _parse_period("some random text")
+    assert result is None
+
+
+# ── _update_account_balance tests ───────────────────────────────────
+
+
+def _make_account(name, balance, acct_type="asset"):
+    return {
+        "id": "1",
+        "attributes": {
+            "name": name,
+            "type": acct_type,
+            "current_balance": str(balance),
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_asset_account_positive_diff():
+    accounts = [_make_account("Syfe Cash+", 8000.0)]
+
+    with (
+        patch(
+            "worker.bot.commands.firefly_client.get_accounts",
+            new_callable=AsyncMock,
+            return_value=accounts,
+        ),
+        patch(
+            "worker.bot.commands.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        result = await _update_account_balance("syfe", 8500.0)
+
+    assert result is not None
+    assert "8,000.00" in result
+    assert "8,500.00" in result
+
+    payload = mock_create.call_args[0][0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "transfer"
+    assert txn["amount"] == "500.0"
+    assert txn["source_name"] == "Market Value Adjustment"
+    assert txn["destination_name"] == "Syfe Cash+"
+
+
+@pytest.mark.asyncio
+async def test_update_asset_account_negative_diff():
+    accounts = [_make_account("IBKR", 50000.0)]
+
+    with (
+        patch(
+            "worker.bot.commands.firefly_client.get_accounts",
+            new_callable=AsyncMock,
+            return_value=accounts,
+        ),
+        patch(
+            "worker.bot.commands.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        result = await _update_account_balance("IBKR", 45000.0)
+
+    assert result is not None
+    payload = mock_create.call_args[0][0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "transfer"
+    assert txn["source_name"] == "IBKR"
+    assert txn["destination_name"] == "Market Value Adjustment"
+
+
+@pytest.mark.asyncio
+async def test_update_liability_increase():
+    accounts = [_make_account("UOB Credit Card", 500.0, "liabilities")]
+
+    with (
+        patch(
+            "worker.bot.commands.firefly_client.get_accounts",
+            new_callable=AsyncMock,
+            return_value=accounts,
+        ),
+        patch(
+            "worker.bot.commands.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        result = await _update_account_balance("UOB Credit Card", 800.0)
+
+    assert result is not None
+    payload = mock_create.call_args[0][0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "deposit"
+    assert txn["source_name"] == "Market Value Adjustment"
+    assert txn["destination_name"] == "UOB Credit Card"
+
+
+@pytest.mark.asyncio
+async def test_update_liability_decrease():
+    accounts = [_make_account("DBS Card", 1000.0, "liabilities")]
+
+    with (
+        patch(
+            "worker.bot.commands.firefly_client.get_accounts",
+            new_callable=AsyncMock,
+            return_value=accounts,
+        ),
+        patch(
+            "worker.bot.commands.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        result = await _update_account_balance("DBS Card", 200.0)
+
+    assert result is not None
+    payload = mock_create.call_args[0][0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "withdrawal"
+    assert txn["source_name"] == "DBS Card"
+    assert txn["destination_name"] == "Market Value Adjustment"
+
+
+@pytest.mark.asyncio
+async def test_update_no_change_returns_none():
+    accounts = [_make_account("Syfe Cash+", 8500.0)]
+
+    with patch(
+        "worker.bot.commands.firefly_client.get_accounts",
+        new_callable=AsyncMock,
+        return_value=accounts,
+    ):
+        result = await _update_account_balance("syfe", 8500.0)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_account_not_found():
+    accounts = [_make_account("OCBC Savings", 5000.0)]
+
+    with patch(
+        "worker.bot.commands.firefly_client.get_accounts",
+        new_callable=AsyncMock,
+        return_value=accounts,
+    ):
+        result = await _update_account_balance("nonexistent", 1000.0)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_skips_revenue_accounts():
+    accounts = [
+        {
+            "id": "1",
+            "attributes": {
+                "name": "Salary",
+                "type": "revenue",
+                "current_balance": "0",
+            },
+        }
+    ]
+
+    with patch(
+        "worker.bot.commands.firefly_client.get_accounts",
+        new_callable=AsyncMock,
+        return_value=accounts,
+    ):
+        result = await _update_account_balance("Salary", 5000.0)
+
     assert result is None

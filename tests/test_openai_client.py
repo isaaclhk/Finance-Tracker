@@ -96,7 +96,9 @@ async def test_query_success():
 @pytest.mark.asyncio
 async def test_query_returns_fallback_on_error():
     mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API error"))
+    mock_client.chat.completions.create = AsyncMock(
+        side_effect=openai_client.OpenAIError("API error")
+    )
 
     with patch.object(openai_client, "get_client", return_value=mock_client):
         result = await openai_client.query([{"role": "user", "content": "test"}])

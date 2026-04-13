@@ -1,6 +1,7 @@
 import logging
 from datetime import date, timedelta
 
+import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -83,7 +84,7 @@ async def _apply_category(query, txn_id: str, category: str):
             int(txn_id),
             {"transactions": [{"category_name": category}]},
         )
-    except Exception:
+    except httpx.HTTPStatusError:
         logger.exception("Failed to update transaction %s", txn_id)
         await query.edit_message_text("Failed to categorize transaction.")
         return
@@ -130,7 +131,7 @@ async def _update_txn_date(query, txn_id: str, new_date: date, is_today: bool = 
             int(txn_id),
             {"transactions": [{"date": new_date.isoformat()}]},
         )
-    except Exception:
+    except httpx.HTTPStatusError:
         logger.exception("Failed to update transaction date %s", txn_id)
         await query.edit_message_text("❌ Failed to change date.")
         return

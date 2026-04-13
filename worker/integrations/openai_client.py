@@ -1,7 +1,7 @@
 import json
 import logging
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAIError
 
 from worker.config import OPENAI_API_KEY, OPENAI_PARSE_MODEL, OPENAI_QUERY_MODEL
 
@@ -84,10 +84,9 @@ async def parse_and_categorize(email_body: str, sender: str) -> dict | None:
                 continue
             logger.error("JSON decode failed on retry")
             return None
-        except Exception:
+        except OpenAIError:
             logger.exception("OpenAI parse_and_categorize failed")
             return None
-    return None
 
 
 async def query(messages: list[dict]) -> str:
@@ -99,6 +98,6 @@ async def query(messages: list[dict]) -> str:
             messages=messages,
         )
         return response.choices[0].message.content
-    except Exception:
+    except OpenAIError:
         logger.exception("OpenAI query failed")
         return "Sorry, I couldn't process that query right now."
