@@ -52,7 +52,7 @@ def _build_firefly_payload(
         txn["source_name"] = merchant
         txn["destination_name"] = source_account
 
-    if firefly_type == "transfer":
+    if firefly_type == "transfer" or validated.get("transaction_type") == "bill_payment":
         # For bill_payment: source is bank account, destination is credit card
         txn["source_name"] = source_account
         dest_hint = validated.get("destination_account", "")

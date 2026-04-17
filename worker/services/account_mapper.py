@@ -34,7 +34,7 @@ TRANSACTION_TYPE_MAP: dict[str, tuple[str, str, str]] = {
     "paynow": ("withdrawal", "asset", "expense"),
     "incoming": ("deposit", "revenue", "asset"),
     "refund": ("deposit", "revenue", "liability"),
-    "bill_payment": ("transfer", "asset", "liability"),
+    "bill_payment": ("withdrawal", "asset", "liability"),
     "giro": ("withdrawal", "asset", "expense"),
 }
 

@@ -31,7 +31,7 @@ def test_transaction_type_incoming():
 
 def test_transaction_type_bill_payment():
     t, src, dst = get_firefly_transaction_type("bill_payment")
-    assert t == "transfer"
+    assert t == "withdrawal"
 
 
 def test_transaction_type_unknown_defaults():
