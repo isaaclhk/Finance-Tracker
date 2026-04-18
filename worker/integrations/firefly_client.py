@@ -90,6 +90,12 @@ async def update_transaction(txn_id: int, payload: dict) -> dict:
     return resp.json()["data"]
 
 
+async def delete_transaction(txn_id: int | str) -> None:
+    client = get_client()
+    resp = await client.delete(f"/api/v1/transactions/{txn_id}")
+    resp.raise_for_status()
+
+
 async def get_categories() -> list[dict]:
     client = get_client()
     resp = await client.get("/api/v1/categories")

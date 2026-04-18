@@ -1,8 +1,39 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
+from worker.integrations import openai_client
 from worker.parsers import llm_email_parser
+
+
+def test_parse_prompt_guides_reversal_classification():
+    assert "reversal" in openai_client.TRANSACTION_TYPES
+    prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
+    assert "reversed" in prompt or "reversal" in prompt
+
+
+@pytest.mark.asyncio
+async def test_parse_reversal_email_passes_through():
+    parsed = {
+        "amount": 12.90,
+        "merchant": None,
+        "date": "2026-04-18",
+        "time": "20:01",
+        "card_or_account": "8106",
+        "transaction_type": "reversal",
+        "bank": "UOB",
+        "suggested_category": None,
+    }
+    with patch(
+        "worker.parsers.llm_email_parser.openai_client.parse_and_categorize",
+        new_callable=AsyncMock,
+        return_value=parsed,
+    ):
+        result = await llm_email_parser.parse_and_categorize(
+            "A transaction of 12.90 SGD made with your UOB card ending 8106 "
+            "on 18 Apr 26, 8:01PM at  has been reversed.",
+            "alerts@uob.com.sg",
+        )
+    assert result["transaction_type"] == "reversal"
 
 
 @pytest.mark.asyncio

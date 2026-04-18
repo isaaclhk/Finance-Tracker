@@ -143,6 +143,64 @@ async def notify_pending_reviews(pending_review: list[dict]):
                 )
         elif item["type"] == "unknown_account":
             await notify_unknown_account(item["parsed"])
+        elif item["type"] == "reversal_applied":
+            await notify_reversal_applied(item["parsed"], item["deleted"])
+        elif item["type"] == "reversal_orphan":
+            await notify_reversal_orphan(item["parsed"])
+        elif item["type"] == "reversal_ambiguous":
+            await notify_reversal_ambiguous(item["parsed"], item["candidates"])
+
+
+def _first_sub(group: dict) -> dict:
+    txns = group.get("attributes", {}).get("transactions", [])
+    return txns[0] if txns else {}
+
+
+async def notify_reversal_applied(parsed: dict, deleted: dict):
+    sub = _first_sub(deleted)
+    amount = parsed.get("amount", "?")
+    merchant = sub.get("description") or parsed.get("merchant") or "Unknown"
+    txn_date = (sub.get("date") or parsed.get("date") or "")[:16].replace("T", " ")
+    await send_message(
+        f"↩️ Reversal applied — deleted original\n"
+        f"──────────\n"
+        f"🏪 {merchant}\n"
+        f"💵 <b>${amount}</b>\n"
+        f"📅 {txn_date}",
+        parse_mode="HTML",
+    )
+
+
+async def notify_reversal_orphan(parsed: dict):
+    amount = parsed.get("amount", "?")
+    card = parsed.get("card_or_account", "?")
+    bank = parsed.get("bank", "?")
+    txn_date = parsed.get("date", "")
+    txn_time = parsed.get("time", "")
+    time_str = f" {txn_time}" if txn_time else ""
+    await send_message(
+        f"⚠️ Reversal but no matching charge found\n"
+        f"──────────\n"
+        f"💳 {bank} *{card}\n"
+        f"💵 <b>${amount}</b>\n"
+        f"📅 {txn_date}{time_str}\n\n"
+        f"Check Firefly yourself lah",
+        parse_mode="HTML",
+    )
+
+
+async def notify_reversal_ambiguous(parsed: dict, candidates: list[dict]):
+    amount = parsed.get("amount", "?")
+    lines = [f"❓ Reversal but {len(candidates)} possible matches", "──────────"]
+    for group in candidates:
+        sub = _first_sub(group)
+        d = (sub.get("date") or "")[:16].replace("T", " ")
+        desc = sub.get("description") or "?"
+        lines.append(f"• {d} — {desc} (id {group.get('id')})")
+    lines.append("")
+    lines.append(f"💵 Amount: <b>${amount}</b>")
+    lines.append("Delete the right one in Firefly yourself")
+    await send_message("\n".join(lines), parse_mode="HTML")
 
 
 async def ask_category_confirmation(

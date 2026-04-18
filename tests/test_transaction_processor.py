@@ -178,6 +178,173 @@ def test_build_firefly_payload_no_foreign_fields_on_failed_conversion():
 
 
 @pytest.mark.asyncio
+async def test_process_reversal_deletes_single_match():
+    email = Email(
+        message_id="rev1",
+        sender="alerts@uob.com.sg",
+        subject="Reversal",
+        body="A transaction of 12.90 SGD ... has been reversed.",
+        timestamp="2026-04-19T09:00:00",
+    )
+    parsed = {
+        "amount": 12.90,
+        "merchant": None,
+        "date": "2026-04-18",
+        "time": "20:01",
+        "card_or_account": "8106",
+        "transaction_type": "reversal",
+        "bank": "UOB",
+    }
+    original = {"id": "42", "attributes": {"transactions": [{"description": "SHOP"}]}}
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-19T09:00:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor"),
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.reversal_matcher.find_original_charge",
+            new_callable=AsyncMock,
+            return_value=[original],
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.delete_transaction",
+            new_callable=AsyncMock,
+        ) as mock_delete,
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_delete.assert_awaited_once_with("42")
+    mock_create.assert_not_called()
+    assert result.new_count == 0
+    assert len(result.pending_review) == 1
+    assert result.pending_review[0]["type"] == "reversal_applied"
+
+
+@pytest.mark.asyncio
+async def test_process_reversal_orphan_when_no_match():
+    email = Email(
+        message_id="rev2",
+        sender="alerts@uob.com.sg",
+        subject="Reversal",
+        body="...has been reversed.",
+        timestamp="2026-04-19T09:00:00",
+    )
+    parsed = {
+        "amount": 12.90,
+        "merchant": None,
+        "date": "2026-04-18",
+        "time": "20:01",
+        "card_or_account": "8106",
+        "transaction_type": "reversal",
+        "bank": "UOB",
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-19T09:00:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor"),
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.reversal_matcher.find_original_charge",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.delete_transaction",
+            new_callable=AsyncMock,
+        ) as mock_delete,
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_delete.assert_not_called()
+    mock_create.assert_not_called()
+    assert len(result.pending_review) == 1
+    assert result.pending_review[0]["type"] == "reversal_orphan"
+
+
+@pytest.mark.asyncio
+async def test_process_reversal_ambiguous_when_multiple_matches():
+    email = Email(
+        message_id="rev3",
+        sender="alerts@uob.com.sg",
+        subject="Reversal",
+        body="...has been reversed.",
+        timestamp="2026-04-19T09:00:00",
+    )
+    parsed = {
+        "amount": 12.90,
+        "merchant": None,
+        "date": "2026-04-18",
+        "time": "20:01",
+        "card_or_account": "8106",
+        "transaction_type": "reversal",
+        "bank": "UOB",
+    }
+    candidates = [
+        {"id": "42", "attributes": {"transactions": [{"description": "A"}]}},
+        {"id": "43", "attributes": {"transactions": [{"description": "B"}]}},
+    ]
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-19T09:00:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor"),
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.reversal_matcher.find_original_charge",
+            new_callable=AsyncMock,
+            return_value=candidates,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.delete_transaction",
+            new_callable=AsyncMock,
+        ) as mock_delete,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_delete.assert_not_called()
+    assert len(result.pending_review) == 1
+    assert result.pending_review[0]["type"] == "reversal_ambiguous"
+    assert len(result.pending_review[0]["candidates"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_process_new_emails_foreign_currency():
     email = Email(
         message_id="456",

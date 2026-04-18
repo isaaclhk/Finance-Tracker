@@ -15,6 +15,7 @@ TRANSACTION_TYPES = [
     "paynow",
     "incoming",
     "refund",
+    "reversal",
     "bill_payment",
     "unknown",
 ]
@@ -49,7 +50,11 @@ Return JSON with exactly these fields:
   "bank": "DBS" | "OCBC" | "UOB" | "Trust" | "Syfe" | "unknown",
   "suggested_category": one of: {_categories_str} | null
 }}
-If any field cannot be determined, use null."""
+If any field cannot be determined, use null.
+If the email says "has been reversed", "reversal", or "transaction reversed",
+use transaction_type="reversal" — the date/time fields refer to the ORIGINAL
+charge, not the reversal notice. Use transaction_type="refund" only for
+merchant-initiated refunds (e.g. "refund from <merchant>")."""
 
 _client: AsyncOpenAI | None = None
 

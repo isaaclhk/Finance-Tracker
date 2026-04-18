@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from worker.integrations import exchange_rate, firefly_client, gmail_client
 from worker.parsers import llm_email_parser
 from worker.parsers.validator import WARNING_LARGE_AMOUNT, validate_parsed_transaction
+from worker.services import reversal_matcher
 from worker.services.account_mapper import (
     ACCOUNT_MAP,
     get_firefly_transaction_type,
@@ -117,6 +118,30 @@ async def process_new_emails() -> ProcessResult:
                         "parsed": validated,
                     }
                 )
+                continue
+
+            if validated.get("transaction_type") == "reversal":
+                candidates = await reversal_matcher.find_original_charge(validated, source_account)
+                if len(candidates) == 1:
+                    original = candidates[0]
+                    await firefly_client.delete_transaction(original["id"])
+                    result.pending_review.append(
+                        {
+                            "type": "reversal_applied",
+                            "parsed": validated,
+                            "deleted": original,
+                        }
+                    )
+                elif len(candidates) == 0:
+                    result.pending_review.append({"type": "reversal_orphan", "parsed": validated})
+                else:
+                    result.pending_review.append(
+                        {
+                            "type": "reversal_ambiguous",
+                            "parsed": validated,
+                            "candidates": candidates,
+                        }
+                    )
                 continue
 
             if await is_duplicate(validated):

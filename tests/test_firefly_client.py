@@ -69,6 +69,20 @@ async def test_create_transaction():
 
 
 @pytest.mark.asyncio
+async def test_delete_transaction():
+    mock_client = AsyncMock()
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    mock_client.delete = AsyncMock(return_value=resp)
+
+    with patch.object(firefly_client, "get_client", return_value=mock_client):
+        result = await firefly_client.delete_transaction("42")
+
+    assert result is None
+    mock_client.delete.assert_called_once_with("/api/v1/transactions/42")
+
+
+@pytest.mark.asyncio
 async def test_search_transactions():
     txns = [{"id": "1"}]
     mock_client = AsyncMock()
