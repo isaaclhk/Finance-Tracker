@@ -1,3 +1,4 @@
+from html import unescape
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,10 +29,11 @@ async def test_ask_category_confirmation_basic():
 
     mock_send.assert_called_once()
     text = mock_send.call_args.kwargs.get("text") or mock_send.call_args[0][0]
-    assert "BOBER TEA" in text
-    assert "$5.50" in text
-    assert "Food & Drink" in text
-    assert "UOB *1234" in text
+    plain_text = unescape(text)
+    assert "BOBER TEA" in plain_text
+    assert "$5.50" in plain_text
+    assert "Food & Drink" in plain_text
+    assert "UOB *1234" in plain_text
 
     markup = mock_send.call_args.kwargs["reply_markup"]
     buttons = markup.inline_keyboard
@@ -39,8 +41,8 @@ async def test_ask_category_confirmation_basic():
     assert "Food & Drink" in buttons[0][0].text
     code = CODE_BY_NAME["Food & Drink"]
     assert buttons[0][0].callback_data == f"cat:42:{code}"
-    # Second row: pick another
-    assert "Pick another" in buttons[1][0].text
+    # Second row: choose another category
+    assert "Choose category" in buttons[1][0].text
     assert buttons[1][0].callback_data == "cat:42:OTHER"
 
 
@@ -97,13 +99,13 @@ async def test_ask_category_confirmation_no_suggested_category():
         )
 
     text = mock_send.call_args.kwargs.get("text") or mock_send.call_args[0][0]
-    assert "not sure leh" in text
+    assert "Not sure yet" in text
 
     markup = mock_send.call_args.kwargs["reply_markup"]
     buttons = markup.inline_keyboard
-    # Only "Pick another" button, no confirm button
+    # Only "Choose category" button, no confirm button
     assert len(buttons) == 1
-    assert "Pick another" in buttons[0][0].text
+    assert "Choose category" in buttons[0][0].text
 
 
 @pytest.mark.asyncio
@@ -118,7 +120,7 @@ async def test_send_large_amount_confirmation_basic():
     text = mock_send.call_args.kwargs.get("text") or mock_send.call_args[0][0]
     assert "APPLE STORE" in text
     assert "$2,499.00" in text
-    assert "big purchase" in text.lower() or "Wah" in text
+    assert "Large transaction" in text
 
 
 @pytest.mark.asyncio

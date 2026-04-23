@@ -87,11 +87,11 @@ async def _apply_category(query, txn_id: str, category: str):
         )
     except httpx.HTTPStatusError:
         logger.exception("Failed to update transaction %s", txn_id)
-        await query.edit_message_text("Failed to categorize transaction.")
+        await query.edit_message_text("Could not categorize this transaction.")
         return
 
     original_text = query.message.text or ""
-    await query.edit_message_text(f"{original_text}\n\n✅ Ok, tagged as {category}!")
+    await query.edit_message_text(f"{original_text}\n\n✅ Tagged as {category}.")
 
 
 # Tracks which chat is waiting for a date input: {chat_id: txn_id}

@@ -169,7 +169,7 @@ async def notify_processing_error(email: object):
 
 
 async def send_large_amount_confirmation(parsed: dict, foreign_info: dict | None = None):
-    merchant = parsed.get("merchant", "Unknown")
+    merchant = _h(parsed.get("merchant") or "Unknown")
     amount = parsed.get("amount", 0)
     extra = ""
     if foreign_info and foreign_info.get("rate") is not None:
@@ -177,7 +177,7 @@ async def send_large_amount_confirmation(parsed: dict, foreign_info: dict | None
         fa = foreign_info["original_amount"]
         extra = f"\n💱 {fc} {fa:,.2f}"
     await send_message(
-        f"💰 Wah, big purchase!\n──────────\n🏪 {merchant}\n💵 <b>${amount:,.2f}</b>{extra}",
+        f"💰 Large transaction noted\n──────────\n🏪 {merchant}\n💵 <b>${amount:,.2f}</b>{extra}",
         parse_mode="HTML",
     )
 
@@ -221,7 +221,7 @@ def _first_sub(group: dict) -> dict:
 async def notify_reversal_applied(parsed: dict, deleted: dict):
     sub = _first_sub(deleted)
     amount = parsed.get("amount", "?")
-    merchant = sub.get("description") or parsed.get("merchant") or "Unknown"
+    merchant = _h(sub.get("description") or parsed.get("merchant") or "Unknown")
     txn_date = (sub.get("date") or parsed.get("date") or "")[:16].replace("T", " ")
     await send_message(
         f"↩️ Reversal applied — deleted original\n"
@@ -235,8 +235,8 @@ async def notify_reversal_applied(parsed: dict, deleted: dict):
 
 async def notify_reversal_orphan(parsed: dict):
     amount = parsed.get("amount", "?")
-    card = parsed.get("card_or_account", "?")
-    bank = parsed.get("bank", "?")
+    card = _h(parsed.get("card_or_account") or "?")
+    bank = _h(parsed.get("bank") or "?")
     txn_date = parsed.get("date", "")
     txn_time = parsed.get("time", "")
     time_str = f" {txn_time}" if txn_time else ""
@@ -246,7 +246,7 @@ async def notify_reversal_orphan(parsed: dict):
         f"💳 {bank} *{card}\n"
         f"💵 <b>${amount}</b>\n"
         f"📅 {txn_date}{time_str}\n\n"
-        f"Check Firefly yourself lah",
+        f"Please check Firefly when convenient.",
         parse_mode="HTML",
     )
 
@@ -257,11 +257,11 @@ async def notify_reversal_ambiguous(parsed: dict, candidates: list[dict]):
     for group in candidates:
         sub = _first_sub(group)
         d = (sub.get("date") or "")[:16].replace("T", " ")
-        desc = sub.get("description") or "?"
+        desc = _h(sub.get("description") or "?")
         lines.append(f"• {d} — {desc} (id {group.get('id')})")
     lines.append("")
     lines.append(f"💵 Amount: <b>${amount}</b>")
-    lines.append("Delete the right one in Firefly yourself")
+    lines.append("Please delete the right one in Firefly.")
     await send_message("\n".join(lines), parse_mode="HTML")
 
 
@@ -276,14 +276,15 @@ async def ask_category_confirmation(
     from worker.bot.callbacks import CODE_BY_NAME
 
     txn_id = transaction.get("id", "0")
-    merchant = parsed.get("merchant", "Unknown")
+    merchant = _h(parsed.get("merchant") or "Unknown")
     amount = parsed.get("amount", 0)
-    card = parsed.get("card_or_account", "")
-    bank = parsed.get("bank", "")
+    card = _h(parsed.get("card_or_account") or "")
+    bank = _h(parsed.get("bank") or "")
     txn_date = parsed.get("date", "")
     txn_time = parsed.get("time", "")
 
     time_str = f" {txn_time}" if txn_time else ""
+    suggested_label = _h(suggested_category) if suggested_category else "Not sure yet"
 
     amount_line = f"💵 <b>${amount:,.2f}</b> · {bank} *{card}"
     if foreign_info:
@@ -301,7 +302,7 @@ async def ask_category_confirmation(
         f"{amount_line}\n"
         f"📅 {txn_date}{time_str}\n"
         f"──────────\n"
-        f"💡 I think is: <b>{suggested_category or 'not sure leh'}</b>"
+        f"💡 Suggested category: <b>{suggested_label}</b>"
     )
 
     buttons = []
@@ -314,6 +315,8 @@ async def ask_category_confirmation(
                 )
             ]
         )
-    buttons.append([InlineKeyboardButton("📋 Pick another", callback_data=f"cat:{txn_id}:OTHER")])
+    buttons.append(
+        [InlineKeyboardButton("📋 Choose category", callback_data=f"cat:{txn_id}:OTHER")]
+    )
 
     await send_message(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")

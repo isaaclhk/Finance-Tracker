@@ -5,7 +5,10 @@ from worker.services.account_mapper import (
 
 
 def test_map_by_bank_fallback():
-    assert map_to_firefly_account({"card_or_account": "9999", "bank": "OCBC"}) == "OCBC Child Savings Account"
+    assert (
+        map_to_firefly_account({"card_or_account": "9999", "bank": "OCBC"})
+        == "OCBC Child Savings Account"
+    )
     assert map_to_firefly_account({"card_or_account": "9999", "bank": "UOB"}) == "UOB One Account"
     assert map_to_firefly_account({"card_or_account": "9999", "bank": "Trust"}) == "Trust Card"
 
