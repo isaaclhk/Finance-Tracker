@@ -12,6 +12,7 @@ from worker.bot.telegram_bot import notify_pending_reviews
 from worker.integrations import firefly_client, ibkr_flex
 from worker.services import salary
 from worker.services.transaction_processor import process_new_emails
+from worker.utils.time import today_sgt
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ async def _update_account_balance(account_name: str, new_balance: float) -> str 
         "transactions": [
             {
                 "type": txn_type,
-                "date": date.today().isoformat(),
+                "date": today_sgt().isoformat(),
                 "amount": str(abs(diff)),
                 "description": f"Balance adjustment for {acct_name}",
                 "source_name": source,
@@ -208,7 +209,7 @@ MONTH_ABBR = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
 
 
 def _parse_period(text: str) -> tuple[date, date, str] | None:
-    today = date.today()
+    today = today_sgt()
     text = text.lower().strip()
 
     if not text or text == "today":
@@ -294,7 +295,7 @@ def _resolve_month(text: str) -> int | None:
 
 
 async def _llm_parse_period(text: str) -> tuple[date, date, str] | None:
-    today = date.today()
+    today = today_sgt()
     prompt = (
         f"Today is {today.isoformat()}. "
         f'The user wants to see spending for: "{text}". '
@@ -338,7 +339,8 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await _llm_parse_period(raw_text)
 
     if result is None:
-        result = (date.today(), date.today(), raw_text or "today")
+        today = today_sgt()
+        result = (today, today, raw_text or "today")
 
     start, end, period_label = result
 
@@ -386,7 +388,7 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = date.today()
+    today = today_sgt()
     args = context.args or []
     raw_text = " ".join(args).strip()
 
@@ -549,7 +551,7 @@ async def handle_income(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "transactions": [
             {
                 "type": "deposit",
-                "date": date.today().isoformat(),
+                "date": today_sgt().isoformat(),
                 "amount": str(amount),
                 "description": source,
                 "source_name": source,

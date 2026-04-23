@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from worker.integrations import firefly_client
 from worker.integrations.openai_client import CATEGORIES
+from worker.utils.time import today_sgt
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ async def _handle_set_date(query, data: str):
 
     txn_id = parts[1]
     days_ago = int(parts[2])
-    new_date = date.today() - timedelta(days=days_ago)
+    new_date = today_sgt() - timedelta(days=days_ago)
 
     await _update_txn_date(query, txn_id, new_date, days_ago == 0)
 

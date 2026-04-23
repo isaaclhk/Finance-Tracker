@@ -1,10 +1,9 @@
-from datetime import date
-
 from worker.config import (
     VALIDATION_LARGE_AMOUNT_THRESHOLD,
     VALIDATION_MAX_AMOUNT,
     VALIDATION_SMALL_AMOUNT_MIN,
 )
+from worker.utils.time import today_sgt
 
 WARNING_LARGE_AMOUNT = "large_amount"
 WARNING_MISSING_DATE = "missing_date"
@@ -28,7 +27,7 @@ def validate_parsed_transaction(parsed: dict) -> tuple[dict | None, list[str]]:
         warnings.append(WARNING_LARGE_AMOUNT)
 
     if parsed.get("date") is None:
-        parsed["date"] = date.today().isoformat()
+        parsed["date"] = today_sgt().isoformat()
         warnings.append(WARNING_MISSING_DATE)
 
     return parsed, warnings

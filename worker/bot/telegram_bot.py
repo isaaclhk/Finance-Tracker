@@ -12,6 +12,7 @@ from telegram.ext import (
 )
 
 from worker.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from worker.utils.time import now_sgt
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def _is_authorized(update: Update) -> bool:
 def auth_required(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         global _last_telegram_activity
-        _last_telegram_activity = datetime.now()
+        _last_telegram_activity = now_sgt()
         if not _is_authorized(update):
             return
         return await func(update, context)

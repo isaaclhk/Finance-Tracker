@@ -1,9 +1,9 @@
 import json
 import logging
 import os
-from datetime import date
 
 from worker.integrations import firefly_client
+from worker.utils.time import today_sgt
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def get_salaries() -> list[dict]:
 
 
 def should_deposit_today(entry: dict, config: dict) -> bool:
-    today = date.today()
+    today = today_sgt()
     if today.day != entry["day"]:
         return False
 
@@ -85,7 +85,7 @@ async def deposit_salary(entry: dict) -> str | None:
         "transactions": [
             {
                 "type": "deposit",
-                "date": date.today().isoformat(),
+                "date": today_sgt().isoformat(),
                 "amount": str(entry["amount"]),
                 "description": f"Salary: {entry['name']}",
                 "source_name": "Salary",
@@ -98,7 +98,7 @@ async def deposit_salary(entry: dict) -> str | None:
         config = load_config()
         if "deposited" not in config:
             config["deposited"] = {}
-        config["deposited"][entry["name"]] = date.today().strftime("%Y-%m")
+        config["deposited"][entry["name"]] = today_sgt().strftime("%Y-%m")
         save_config(config)
         return f"{entry['name']}: ${entry['amount']:,.2f} → {entry.get('account', DEFAULT_ACCOUNT)}"
     except Exception:

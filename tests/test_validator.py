@@ -1,10 +1,9 @@
-from datetime import date
-
 from worker.parsers.validator import (
     WARNING_LARGE_AMOUNT,
     WARNING_MISSING_DATE,
     validate_parsed_transaction,
 )
+from worker.utils.time import today_sgt
 
 
 def _base_parsed(**overrides):
@@ -74,7 +73,7 @@ def test_missing_date_defaults_to_today():
     parsed = _base_parsed(date=None)
     result, warnings = validate_parsed_transaction(parsed)
     assert result is not None
-    assert result["date"] == date.today().isoformat()
+    assert result["date"] == today_sgt().isoformat()
     assert WARNING_MISSING_DATE in warnings
 
 

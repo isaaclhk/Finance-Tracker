@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import httpx
 from telegram import Update
@@ -12,6 +12,7 @@ from worker.config import (
     CONVERSATION_TIMEOUT_MINUTES,
 )
 from worker.integrations import firefly_client, openai_client
+from worker.utils.time import now_sgt, today_sgt
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def _format_finance_context(accounts: list[dict], transactions: list[dict]) -> s
 async def handle_natural_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     question = update.message.text
-    now = datetime.now()
+    now = now_sgt()
 
     # Check if this chat is waiting for a date input
     from worker.bot.callbacks import pending_date_input
@@ -62,7 +63,7 @@ async def handle_natural_query(update: Update, context: ContextTypes.DEFAULT_TYP
     last_activity[chat_id] = now
 
     # Fetch financial data
-    today = date.today()
+    today = today_sgt()
     start = today - timedelta(days=30)
     try:
         accounts = await firefly_client.get_accounts()

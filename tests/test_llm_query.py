@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from worker.bot.llm_query import conversation_histories, last_activity
 from worker.config import CONVERSATION_TIMEOUT_MINUTES
+from worker.utils.time import now_sgt
 
 
 def test_conversation_history_reset_on_timeout():
@@ -10,12 +11,12 @@ def test_conversation_history_reset_on_timeout():
         {"role": "user", "content": "old question"},
         {"role": "assistant", "content": "old answer"},
     ]
-    last_activity[chat_id] = datetime.now() - timedelta(
+    last_activity[chat_id] = now_sgt() - timedelta(
         minutes=CONVERSATION_TIMEOUT_MINUTES + 1
     )
 
     # Simulate the timeout check logic from handle_natural_query
-    now = datetime.now()
+    now = now_sgt()
     if chat_id in last_activity:
         if now - last_activity[chat_id] > timedelta(minutes=CONVERSATION_TIMEOUT_MINUTES):
             conversation_histories[chat_id] = []
@@ -30,9 +31,9 @@ def test_conversation_history_preserved_within_timeout():
         {"role": "assistant", "content": "recent answer"},
     ]
     conversation_histories[chat_id] = history.copy()
-    last_activity[chat_id] = datetime.now() - timedelta(minutes=1)
+    last_activity[chat_id] = now_sgt() - timedelta(minutes=1)
 
-    now = datetime.now()
+    now = now_sgt()
     if chat_id in last_activity:
         if now - last_activity[chat_id] > timedelta(minutes=CONVERSATION_TIMEOUT_MINUTES):
             conversation_histories[chat_id] = []

@@ -14,6 +14,7 @@ from worker.bot.telegram_bot import (
 from worker.config import POLL_INTERVAL_MINUTES, TELEGRAM_WEBHOOK_URL
 from worker.integrations import exchange_rate, firefly_client, ibkr_flex
 from worker.services.transaction_processor import process_new_emails
+from worker.utils.time import now_sgt
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +35,7 @@ async def _poll_loop():
         try:
             logger.info("Polling for new emails...")
             result = await process_new_emails()
-            _last_poll = datetime.now()
+            _last_poll = now_sgt()
             _total_processed += result.new_count
 
             await notify_pending_reviews(result.pending_review)
@@ -52,7 +53,7 @@ async def _poll_loop():
 
 
 def _seconds_until_next(hour: int) -> float:
-    now = datetime.now()
+    now = now_sgt()
     target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
     if now >= target:
         target += timedelta(days=1)
@@ -155,7 +156,7 @@ app = FastAPI(title="Finance Tracker Worker", lifespan=lifespan)
 async def health() -> dict:
     from worker.bot.telegram_bot import get_last_telegram_activity
 
-    now = datetime.now()
+    now = now_sgt()
     last_tg = get_last_telegram_activity()
 
     # Email polling should happen every POLL_INTERVAL_MINUTES

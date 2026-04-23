@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from worker.bot.commands import _parse_period, _update_account_balance
+from worker.utils.time import today_sgt
 
 # ── _parse_period tests ─────────────────────────────────────────────
 
@@ -11,8 +12,8 @@ def test_parse_period_today():
     result = _parse_period("")
     assert result is not None
     start, end, label = result
-    assert start == date.today()
-    assert end == date.today()
+    assert start == today_sgt()
+    assert end == today_sgt()
     assert label == "today"
 
 
@@ -34,7 +35,7 @@ def test_parse_period_this_week():
     start, end, label = result
     assert label == "this week"
     assert start.weekday() == 0
-    assert end == date.today()
+    assert end == today_sgt()
 
 
 def test_parse_period_last_week():
@@ -52,7 +53,7 @@ def test_parse_period_this_month():
     start, end, label = result
     assert label == "this month"
     assert start.day == 1
-    assert start.month == date.today().month
+    assert start.month == today_sgt().month
 
 
 def test_parse_period_last_month():
@@ -61,7 +62,7 @@ def test_parse_period_last_month():
     start, end, label = result
     assert label == "last month"
     assert start.day == 1
-    today = date.today()
+    today = today_sgt()
     expected_month = today.month - 1 if today.month > 1 else 12
     assert start.month == expected_month
 
@@ -73,7 +74,7 @@ def test_parse_period_this_year():
     assert label == "this year"
     assert start.month == 1
     assert start.day == 1
-    assert end == date.today()
+    assert end == today_sgt()
 
 
 def test_parse_period_last_year():
@@ -81,7 +82,7 @@ def test_parse_period_last_year():
     assert result is not None
     start, end, label = result
     assert label == "last year"
-    assert start.year == date.today().year - 1
+    assert start.year == today_sgt().year - 1
 
 
 def test_parse_period_last_n_days():
@@ -89,7 +90,7 @@ def test_parse_period_last_n_days():
     assert result is not None
     start, end, label = result
     assert label == "last 7 days"
-    assert end == date.today()
+    assert end == today_sgt()
 
 
 def test_parse_period_last_n_months():
@@ -97,7 +98,7 @@ def test_parse_period_last_n_months():
     assert result is not None
     start, end, label = result
     assert label == "last 3 months"
-    assert end == date.today()
+    assert end == today_sgt()
 
 
 def test_parse_period_past_n_weeks():
