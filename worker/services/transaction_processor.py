@@ -21,6 +21,8 @@ class ProcessResult:
     pending_review: list[dict] = field(default_factory=list)
     skipped: int = 0
     errors: int = 0
+    deferred: int = 0
+    cursor_saved: bool = False
 
 
 def _build_firefly_payload(
@@ -69,6 +71,7 @@ def _build_firefly_payload(
 
 async def process_new_emails() -> ProcessResult:
     result = ProcessResult()
+    should_save_cursor = True
 
     try:
         emails, new_history_id, latest_timestamp = await gmail_client.fetch_new_alerts()
@@ -77,11 +80,18 @@ async def process_new_emails() -> ProcessResult:
         result.errors += 1
         return result
 
-    for email in emails:
+    for email in sorted(emails, key=lambda e: e.timestamp or ""):
         try:
             parsed = await llm_email_parser.parse_and_categorize(email.body, email.sender)
             if parsed is None:
-                result.skipped += 1
+                should_save_cursor = False
+                result.deferred += 1
+                result.pending_review.append(
+                    {
+                        "type": "parse_failure",
+                        "email": email,
+                    }
+                )
                 continue
 
             # Convert foreign currency to SGD before validation
@@ -98,20 +108,42 @@ async def process_new_emails() -> ProcessResult:
                     }
                     parsed["amount"] = sgd_amount
                 else:
+                    should_save_cursor = False
+                    result.deferred += 1
                     foreign_info = {
                         "currency": currency,
                         "original_amount": parsed["amount"],
                         "rate": None,
                     }
+                    result.pending_review.append(
+                        {
+                            "type": "conversion_failed",
+                            "parsed": parsed,
+                            "foreign_info": foreign_info,
+                            "email": email,
+                        }
+                    )
+                    continue
 
             validated, warnings = validate_parsed_transaction(parsed)
             if validated is None:
                 logger.warning("Validation failed: %s", warnings)
-                result.skipped += 1
+                should_save_cursor = False
+                result.deferred += 1
+                result.pending_review.append(
+                    {
+                        "type": "validation_failed",
+                        "parsed": parsed,
+                        "warnings": warnings,
+                        "email": email,
+                    }
+                )
                 continue
 
             source_account = map_to_firefly_account(validated)
             if source_account is None:
+                should_save_cursor = False
+                result.deferred += 1
                 result.pending_review.append(
                     {
                         "type": "unknown_account",
@@ -169,10 +201,24 @@ async def process_new_emails() -> ProcessResult:
 
         except Exception:
             logger.exception("Failed to process email %s", email.message_id)
+            should_save_cursor = False
             result.errors += 1
+            result.pending_review.append(
+                {
+                    "type": "processing_error",
+                    "email": email,
+                }
+            )
 
     # Save cursor only after all emails are processed
-    if new_history_id:
+    if new_history_id and should_save_cursor:
         gmail_client.save_cursor(new_history_id, latest_timestamp)
+        result.cursor_saved = True
+    elif new_history_id:
+        logger.warning(
+            "Not advancing Gmail cursor because %d email(s) are deferred and %d errored",
+            result.deferred,
+            result.errors,
+        )
 
     return result

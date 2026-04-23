@@ -40,11 +40,13 @@ async def _poll_loop():
 
             await notify_pending_reviews(result.pending_review)
 
-            if result.new_count > 0:
+            if result.new_count > 0 or result.deferred > 0 or result.errors > 0:
                 logger.info(
-                    "Processed %d new transactions (%d pending)",
+                    "Processed %d new transactions (%d pending, %d deferred, %d errors)",
                     result.new_count,
                     len(result.pending_review),
+                    result.deferred,
+                    result.errors,
                 )
         except Exception:
             logger.exception("Error in poll loop")

@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from html import escape
 
 from telegram import Bot, Update
 from telegram.ext import (
@@ -18,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 _application: Application | None = None
 _last_telegram_activity: datetime | None = None
+
+
+def _h(value: object) -> str:
+    return escape(str(value), quote=False)
+
+
+def _email_field(email: object, name: str, default: str = "?") -> str:
+    return str(getattr(email, name, default) or default)
 
 
 def get_last_telegram_activity() -> datetime | None:
@@ -88,29 +97,73 @@ async def send_message(text: str, **kwargs):
     await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text, **kwargs)
 
 
-async def notify_parse_failure(parsed: dict):
-    merchant = parsed.get("merchant", "Unknown")
-    amount = parsed.get("amount", "?")
+async def notify_parse_failure(email: object):
+    sender = _h(_email_field(email, "sender"))
+    subject = _h(_email_field(email, "subject", "Bank alert"))
     await send_message(
-        f"⚠️ Aiyo, cannot read this one\n"
+        f"<b>⚠️ Bank alert not recorded yet</b>\n"
         f"──────────\n"
-        f"🏪 {merchant} · <b>${amount}</b>\n\n"
-        f"Check the email yourself lah",
+        f"From: {sender}\n"
+        f"Subject: {subject}\n\n"
+        f"I could not read this alert reliably, so I will retry it on the next poll.",
         parse_mode="HTML",
     )
 
 
 async def notify_unknown_account(parsed: dict):
-    card = parsed.get("card_or_account", "?")
-    bank = parsed.get("bank", "?")
-    merchant = parsed.get("merchant", "?")
+    card = _h(parsed.get("card_or_account") or "?")
+    bank = _h(parsed.get("bank") or "?")
+    merchant = _h(parsed.get("merchant") or "?")
     amount = parsed.get("amount", "?")
     await send_message(
-        f"❓ Eh, which account is this?\n"
+        f"<b>❓ Account needs mapping</b>\n"
         f"──────────\n"
         f"💳 Card *{card} ({bank})\n"
         f"🏪 {merchant} · <b>${amount}</b>\n\n"
-        f"Add this card to ACCOUNT_MAP in .env",
+        f"This is not recorded yet. Add this card/account to ACCOUNT_MAP; "
+        f"I will retry it on the next poll.",
+        parse_mode="HTML",
+    )
+
+
+async def notify_validation_failed(parsed: dict, warnings: list[str]):
+    merchant = _h(parsed.get("merchant") or "Unknown")
+    amount = parsed.get("amount", "?")
+    reason = _h(", ".join(warnings) or "validation_failed")
+    await send_message(
+        f"<b>⚠️ Transaction not recorded yet</b>\n"
+        f"──────────\n"
+        f"🏪 {merchant}\n"
+        f"💵 <b>${amount}</b>\n"
+        f"Reason: {reason}\n\n"
+        f"I will retry it on the next poll so it does not get lost.",
+        parse_mode="HTML",
+    )
+
+
+async def notify_conversion_failed(parsed: dict, foreign_info: dict):
+    merchant = _h(parsed.get("merchant") or "Unknown")
+    currency = _h(foreign_info.get("currency", "?"))
+    amount = foreign_info.get("original_amount", "?")
+    await send_message(
+        f"<b>⚠️ Currency conversion unavailable</b>\n"
+        f"──────────\n"
+        f"🏪 {merchant}\n"
+        f"💱 {currency} {amount}\n\n"
+        f"I did not record this as SGD. I will retry when rates are available.",
+        parse_mode="HTML",
+    )
+
+
+async def notify_processing_error(email: object):
+    sender = _h(_email_field(email, "sender"))
+    subject = _h(_email_field(email, "subject", "Bank alert"))
+    await send_message(
+        f"<b>⚠️ Bank alert processing failed</b>\n"
+        f"──────────\n"
+        f"From: {sender}\n"
+        f"Subject: {subject}\n\n"
+        f"I kept the Gmail cursor in place so this alert can be retried.",
         parse_mode="HTML",
     )
 
@@ -144,6 +197,14 @@ async def notify_pending_reviews(pending_review: list[dict]):
                 )
         elif item["type"] == "unknown_account":
             await notify_unknown_account(item["parsed"])
+        elif item["type"] == "parse_failure":
+            await notify_parse_failure(item["email"])
+        elif item["type"] == "validation_failed":
+            await notify_validation_failed(item["parsed"], item.get("warnings", []))
+        elif item["type"] == "conversion_failed":
+            await notify_conversion_failed(item["parsed"], item["foreign_info"])
+        elif item["type"] == "processing_error":
+            await notify_processing_error(item["email"])
         elif item["type"] == "reversal_applied":
             await notify_reversal_applied(item["parsed"], item["deleted"])
         elif item["type"] == "reversal_orphan":

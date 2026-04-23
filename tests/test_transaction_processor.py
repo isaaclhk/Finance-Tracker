@@ -97,6 +97,7 @@ async def test_process_new_emails_success():
     assert result.new_count == 1
     assert len(result.pending_review) == 1
     assert result.pending_review[0]["type"] == "category_confirmation"
+    assert result.cursor_saved is True
 
 
 @pytest.mark.asyncio
@@ -142,6 +143,152 @@ async def test_process_skips_duplicates():
         result = await process_new_emails()
 
     assert result.new_count == 0
+
+
+@pytest.mark.asyncio
+async def test_process_holds_cursor_on_unknown_account():
+    email = Email(
+        message_id="unknown-account",
+        sender="alerts@example.com",
+        subject="Transaction Alert",
+        body="You spent $5.50 at TEST",
+        timestamp="2026-03-25T14:15:00",
+    )
+    parsed = {
+        "amount": 5.50,
+        "merchant": "TEST",
+        "date": "2026-03-25",
+        "time": "14:15",
+        "card_or_account": "9999",
+        "transaction_type": "card_spending",
+        "bank": "HSBC",
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-03-25T14:15:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_not_called()
+    assert result.deferred == 1
+    assert result.cursor_saved is False
+    assert result.pending_review[0]["type"] == "unknown_account"
+
+
+@pytest.mark.asyncio
+async def test_process_holds_cursor_on_failed_foreign_conversion():
+    email = Email(
+        message_id="foreign-fail",
+        sender="alerts@example.com",
+        subject="Transaction Alert",
+        body="You spent USD 50.00 at SHOP",
+        timestamp="2026-03-25T14:15:00",
+    )
+    parsed = {
+        "currency": "USD",
+        "amount": 50.0,
+        "merchant": "SHOP",
+        "date": "2026-03-25",
+        "time": "14:15",
+        "card_or_account": "1234",
+        "transaction_type": "card_spending",
+        "bank": "UOB",
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-03-25T14:15:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.exchange_rate.convert_to_sgd",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_not_called()
+    mock_create.assert_not_called()
+    assert result.deferred == 1
+    assert result.pending_review[0]["type"] == "conversion_failed"
+
+
+@pytest.mark.asyncio
+async def test_process_holds_cursor_on_processing_error():
+    email = Email(
+        message_id="firefly-fail",
+        sender="alerts@example.com",
+        subject="Transaction Alert",
+        body="You spent $5.50 at TEST",
+        timestamp="2026-03-25T14:15:00",
+    )
+    parsed = {
+        "amount": 5.50,
+        "merchant": "TEST",
+        "date": "2026-03-25",
+        "time": "14:15",
+        "card_or_account": "1234",
+        "transaction_type": "card_spending",
+        "bank": "UOB",
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-03-25T14:15:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.is_duplicate",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("firefly unavailable"),
+        ),
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_not_called()
+    assert result.errors == 1
+    assert result.cursor_saved is False
+    assert result.pending_review[0]["type"] == "processing_error"
 
 
 def test_build_firefly_payload_with_foreign_info():
