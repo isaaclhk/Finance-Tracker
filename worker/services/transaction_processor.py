@@ -144,7 +144,7 @@ async def process_new_emails() -> ProcessResult:
                     )
                 continue
 
-            if await is_duplicate(validated):
+            if await is_duplicate(validated, source_account=source_account):
                 continue
 
             payload = _build_firefly_payload(validated, source_account, foreign_info)
