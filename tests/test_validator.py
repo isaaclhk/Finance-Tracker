@@ -42,6 +42,18 @@ def test_missing_card_or_account():
     assert "missing_critical_fields" in warnings
 
 
+def test_bill_payment_allows_bank_as_source_hint():
+    parsed = _base_parsed(
+        card_or_account=None,
+        transaction_type="bill_payment",
+        bank="UOB",
+        destination_account="Trust",
+    )
+    result, warnings = validate_parsed_transaction(parsed)
+    assert result is not None
+    assert warnings == []
+
+
 def test_amount_too_small():
     parsed = _base_parsed(amount=0.001)
     result, warnings = validate_parsed_transaction(parsed)

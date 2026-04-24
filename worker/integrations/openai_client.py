@@ -65,7 +65,11 @@ the reason briefly in non_transaction_reason.
 If the email says "has been reversed", "reversal", or "transaction reversed",
 use transaction_type="reversal" — the date/time fields refer to the ORIGINAL
 charge, not the reversal notice. Use transaction_type="refund" only for
-merchant-initiated refunds (e.g. "refund from <merchant>")."""
+merchant-initiated refunds (e.g. "refund from <merchant>").
+Payments to Trust Bank, Trust Card, or a Trust credit card are bill_payment
+transactions with destination_account="Trust". A Trust-side repayment receipt
+without a source account should be non_transaction because the debit-side bank
+alert records the actual payment."""
 
 _client: AsyncOpenAI | None = None
 

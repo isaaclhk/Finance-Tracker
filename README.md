@@ -54,7 +54,9 @@ flowchart TD
     Reversal -->|"No"| Dedup["Check recent Firefly transactions for duplicates"]
     Dedup -->|"Duplicate"| SkipDuplicate["Skip duplicate"]
     Dedup -->|"New"| Create["Create Firefly transaction"]
-    Create --> Category["Send Telegram category confirmation"]
+    Create --> BillPayment{"Bill payment?"}
+    BillPayment -->|"Yes"| SilentPayment["Record silently"]
+    BillPayment -->|"No"| Category["Send Telegram category confirmation"]
 
     Convert -->|"Rate unavailable"| RetryConvert["Hold cursor for retry"]
     Validate -->|"Invalid"| RetryValidate["Hold cursor for retry"]
@@ -68,6 +70,7 @@ flowchart TD
     NeedsReview --> SaveCursor
     ReversalResult --> SaveCursor
     SkipDuplicate --> SaveCursor
+    SilentPayment --> SaveCursor
     Category --> SaveCursor
 
     RetryParse --> HoldCursor["Keep Gmail cursor in place"]
@@ -116,7 +119,7 @@ flowchart LR
     IBKRNow --> Reply
 ```
 
-For ordinary spending, Firefly gets one generic expense account: `Merchant Spend`. The merchant name is kept in the transaction `description`, and the spend category is stored in Firefly's `category_name`. Telegram category confirmations update `category_name`, while `/spent` and `/summary` still use the description to show merchant-level reporting.
+For ordinary spending, Firefly gets one generic expense account: `Merchant Spend`. The merchant name is kept in the transaction `description`, and the spend category is stored in Firefly's `category_name`. Telegram category confirmations update `category_name`, while `/spent` and `/summary` still use the description to show merchant-level reporting. Credit-card bill payments to mapped cards are recorded silently without category prompts.
 
 ## Telegram Bot Commands
 

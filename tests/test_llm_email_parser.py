@@ -19,6 +19,13 @@ def test_parse_prompt_guides_record_status_classification():
     assert "needs_review" in prompt
 
 
+def test_parse_prompt_guides_trust_card_payment_classification():
+    prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
+    assert "trust bank" in prompt
+    assert "bill_payment" in prompt
+    assert 'destination_account="trust"' in prompt
+
+
 @pytest.mark.asyncio
 async def test_parse_reversal_email_passes_through():
     parsed = {

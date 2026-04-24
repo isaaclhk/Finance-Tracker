@@ -20,6 +20,14 @@ _UOB_PAYNOW_CONFIRMATION_RE = re.compile(
     r"\buob\s*-\s*your\s+paynow\s+transfer\s+to\b.+\bis\s+successfu\w*",
     re.IGNORECASE,
 )
+_TRUST_CARD_PAYMENT_RE = re.compile(
+    r"^\s*trust\s*$|\btrust\s+(?:bank|card|credit\s+card)\b",
+    re.IGNORECASE,
+)
+_TRUST_REPAYMENT_RECEIPT_RE = re.compile(
+    r"\b(?:credit\s+card\s+)?repayment\b|\bpayment\s+received\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -52,6 +60,43 @@ def _is_non_transaction(parsed: dict) -> bool:
 
 def _needs_review(parsed: dict) -> bool:
     return parsed.get("record_status") == "needs_review"
+
+
+def _looks_like_trust_email(email: object) -> bool:
+    sender = _email_field(email, "sender").lower()
+    return "trustbank.sg" in sender or "trust" in sender
+
+
+def _is_trust_repayment_receipt_without_source(parsed: dict, email: object) -> bool:
+    if parsed.get("card_or_account"):
+        return False
+    if parsed.get("bank") != "Trust" and not _looks_like_trust_email(email):
+        return False
+
+    content = "\n".join(
+        (
+            str(parsed.get("merchant") or ""),
+            str(parsed.get("transaction_type") or ""),
+            _email_field(email, "subject"),
+            _email_field(email, "body"),
+        )
+    )
+    return _TRUST_REPAYMENT_RECEIPT_RE.search(content) is not None
+
+
+def _normalise_trust_card_payment(parsed: dict) -> None:
+    merchant = str(parsed.get("merchant") or "")
+    if _TRUST_CARD_PAYMENT_RE.search(merchant) is None:
+        return
+
+    source_account = map_to_firefly_account(parsed)
+    if source_account in (None, ACCOUNT_MAP.get("Trust")):
+        return
+
+    parsed["transaction_type"] = "bill_payment"
+    parsed["destination_account"] = "Trust"
+    parsed["merchant"] = "Trust Card Payment"
+    parsed["suggested_category"] = None
 
 
 def _build_firefly_payload(
@@ -152,6 +197,12 @@ async def process_new_emails() -> ProcessResult:
                 )
                 continue
 
+            if _is_trust_repayment_receipt_without_source(parsed, email):
+                result.skipped += 1
+                continue
+
+            _normalise_trust_card_payment(parsed)
+
             # Convert foreign currency to SGD before validation
             foreign_info = None
             currency = (parsed.get("currency") or "SGD").upper()
@@ -246,6 +297,9 @@ async def process_new_emails() -> ProcessResult:
             category = (firefly_txns[0].get("category_name") if firefly_txns else None) or suggested
 
             result.new_count += 1
+            if validated.get("transaction_type") == "bill_payment":
+                continue
+
             result.pending_review.append(
                 {
                     "type": "category_confirmation",

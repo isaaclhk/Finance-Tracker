@@ -12,7 +12,11 @@ WARNING_MISSING_DATE = "missing_date"
 def validate_parsed_transaction(parsed: dict) -> tuple[dict | None, list[str]]:
     warnings: list[str] = []
 
-    if parsed.get("amount") is None or parsed.get("card_or_account") is None:
+    source_hint_available = parsed.get("card_or_account") is not None
+    bill_payment_with_bank = (
+        parsed.get("transaction_type") == "bill_payment" and parsed.get("bank") is not None
+    )
+    if parsed.get("amount") is None or not (source_hint_available or bill_payment_with_bank):
         return None, ["missing_critical_fields"]
 
     amount = parsed["amount"]

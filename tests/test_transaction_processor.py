@@ -317,6 +317,124 @@ async def test_process_skips_parser_classified_non_transaction():
 
 
 @pytest.mark.asyncio
+async def test_process_skips_trust_repayment_receipt_without_source():
+    email = Email(
+        message_id="trust-repayment-receipt",
+        sender="Trust <from_us@trustbank.sg>",
+        subject="Credit card repayment received",
+        body="Your credit card repayment of SGD 1,283.30 has been received.",
+        timestamp="2026-04-24T18:11:00+08:00",
+    )
+    parsed = {
+        "record_status": "recordable",
+        "amount": 1283.30,
+        "merchant": "Credit Card Repayment",
+        "date": "2026-04-24",
+        "time": "18:11",
+        "card_or_account": None,
+        "transaction_type": "bill_payment",
+        "bank": "Trust",
+        "suggested_category": None,
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T18:11:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_called_once_with(99999, "2026-04-24T18:11:00+08:00")
+    mock_create.assert_not_called()
+    assert result.cursor_saved is True
+    assert result.skipped == 1
+    assert result.deferred == 0
+    assert result.pending_review == []
+
+
+@pytest.mark.asyncio
+async def test_process_records_uob_payment_to_trust_as_silent_bill_payment():
+    email = Email(
+        message_id="uob-trust-payment",
+        sender="unialerts@uobgroup.com",
+        subject="UOB Personal Internet Banking Notification Alerts",
+        body=(
+            "You made a PayNow transfer of SGD 1,283.30 to Trust Bank "
+            "on your a/c ending 1076 at 6:11PM SGT, 24 Apr 26."
+        ),
+        timestamp="2026-04-24T18:11:00+08:00",
+    )
+    parsed = {
+        "record_status": "recordable",
+        "amount": 1283.30,
+        "merchant": "Trust Bank",
+        "date": "2026-04-24",
+        "time": "18:11",
+        "card_or_account": "1076",
+        "transaction_type": "paynow",
+        "bank": "UOB",
+        "suggested_category": None,
+    }
+    firefly_txn = {
+        "id": "88",
+        "attributes": {"transactions": [{"description": "Trust Card Payment"}]},
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T18:11:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.is_duplicate",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_duplicate,
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+            return_value=firefly_txn,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    payload = mock_create.await_args.args[0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "withdrawal"
+    assert txn["description"] == "Trust Card Payment"
+    assert txn["source_name"] == "UOB One Account"
+    assert txn["destination_name"] == "Trust Card"
+    mock_duplicate.assert_awaited_once()
+    mock_save.assert_called_once_with(99999, "2026-04-24T18:11:00+08:00")
+    assert result.cursor_saved is True
+    assert result.new_count == 1
+    assert result.pending_review == []
+
+
+@pytest.mark.asyncio
 async def test_process_needs_review_does_not_retry():
     email = Email(
         message_id="uob-needs-review",
