@@ -198,6 +198,78 @@ async def test_process_skips_duplicates():
 
 
 @pytest.mark.asyncio
+async def test_process_skips_uob_generic_alert_without_amount():
+    email = Email(
+        message_id="uob-generic",
+        sender="unialerts@uobgroup.com",
+        subject="UOB Personal Internet Banking Notification Alerts",
+        body="You have successfully logged in to UOB Personal Internet Banking.",
+        timestamp="2026-04-24T09:00:00+08:00",
+    )
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T09:00:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+        ) as mock_parse,
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_called_once_with(99999, "2026-04-24T09:00:00+08:00")
+    mock_parse.assert_not_called()
+    mock_create.assert_not_called()
+    assert result.cursor_saved is True
+    assert result.skipped == 1
+    assert result.pending_review == []
+
+
+@pytest.mark.asyncio
+async def test_process_retries_uob_generic_alert_with_amount_when_parse_fails():
+    email = Email(
+        message_id="uob-transaction-like",
+        sender="unialerts@uobgroup.com",
+        subject="UOB Personal Internet Banking Notification Alerts",
+        body="A transaction of SGD 50.00 was made from your account.",
+        timestamp="2026-04-24T09:00:00+08:00",
+    )
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T09:00:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_parse,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_not_called()
+    mock_parse.assert_awaited_once_with(email.body, email.sender)
+    assert result.cursor_saved is False
+    assert result.deferred == 1
+    assert result.pending_review[0]["type"] == "parse_failure"
+
+
+@pytest.mark.asyncio
 async def test_process_trust_bill_reminder_sends_once_and_saves_cursor(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "worker.services.bill_reminders.BILL_REMINDER_STATE_PATH",

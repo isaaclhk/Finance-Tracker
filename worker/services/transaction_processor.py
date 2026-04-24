@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass, field
 
 from worker.config import FIREFLY_MERCHANT_EXPENSE_ACCOUNT
@@ -15,6 +16,11 @@ from worker.utils.dedup import is_duplicate
 
 logger = logging.getLogger(__name__)
 
+_AMOUNT_HINT_RE = re.compile(
+    r"(?i)(?:\b(?:S\$|SGD|USD|EUR|GBP|JPY|MYR|THB|AUD|HKD)\s*\d|\$\s*\d|"
+    r"\d[\d,]*\.\d{2}\s*(?:SGD|USD|EUR|GBP|JPY|MYR|THB|AUD|HKD)\b)"
+)
+
 
 @dataclass
 class ProcessResult:
@@ -24,6 +30,22 @@ class ProcessResult:
     errors: int = 0
     deferred: int = 0
     cursor_saved: bool = False
+
+
+def _email_field(email: object, name: str) -> str:
+    return str(getattr(email, name, "") or "")
+
+
+def _is_uob_non_transaction_alert(email: object) -> bool:
+    sender = _email_field(email, "sender").lower()
+    subject = _email_field(email, "subject").lower()
+    body = _email_field(email, "body")
+
+    if "unialerts@uobgroup.com" not in sender:
+        return False
+    if "uob personal internet banking notification alerts" not in subject:
+        return False
+    return _AMOUNT_HINT_RE.search(body) is None
 
 
 def _build_firefly_payload(
@@ -83,6 +105,10 @@ async def process_new_emails() -> ProcessResult:
 
     for email in sorted(emails, key=lambda e: e.timestamp or ""):
         try:
+            if _is_uob_non_transaction_alert(email):
+                result.skipped += 1
+                continue
+
             reminder = bill_reminders.detect_trust_bill_reminder(email)
             if reminder:
                 if bill_reminders.was_sent(reminder["key"]):

@@ -6,9 +6,7 @@ logger = logging.getLogger(__name__)
 # Firefly III
 FIREFLY_URL = os.getenv("FIREFLY_URL", "http://localhost:8080")
 FIREFLY_TOKEN = os.getenv("FIREFLY_TOKEN", "")
-FIREFLY_MERCHANT_EXPENSE_ACCOUNT = os.getenv(
-    "FIREFLY_MERCHANT_EXPENSE_ACCOUNT", "Merchant Spend"
-)
+FIREFLY_MERCHANT_EXPENSE_ACCOUNT = os.getenv("FIREFLY_MERCHANT_EXPENSE_ACCOUNT", "Merchant Spend")
 
 # Gmail
 GMAIL_CREDENTIALS = os.getenv("GMAIL_CREDENTIALS", "")
