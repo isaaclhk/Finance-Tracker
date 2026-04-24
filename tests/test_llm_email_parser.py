@@ -11,6 +11,14 @@ def test_parse_prompt_guides_reversal_classification():
     assert "reversed" in prompt or "reversal" in prompt
 
 
+def test_parse_prompt_guides_record_status_classification():
+    assert "non_transaction" in openai_client.TRANSACTION_TYPES
+    prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
+    assert "record_status" in prompt
+    assert "non_transaction" in prompt
+    assert "needs_review" in prompt
+
+
 @pytest.mark.asyncio
 async def test_parse_reversal_email_passes_through():
     parsed = {
@@ -57,6 +65,49 @@ async def test_parse_success():
         result = await llm_email_parser.parse_and_categorize("email body", "alerts@uob.com.sg")
 
     assert result == parsed
+    assert result["record_status"] == "recordable"
+
+
+@pytest.mark.asyncio
+async def test_parse_non_transaction_passes_through_without_amount():
+    parsed = {
+        "record_status": "non_transaction",
+        "non_transaction_reason": "paynow_duplicate_confirmation",
+        "amount": None,
+        "merchant": "Glynis",
+        "transaction_type": "non_transaction",
+        "bank": "UOB",
+    }
+
+    with patch(
+        "worker.parsers.llm_email_parser.openai_client.parse_and_categorize",
+        new_callable=AsyncMock,
+        return_value=parsed,
+    ):
+        result = await llm_email_parser.parse_and_categorize("email body", "alerts@uob.com.sg")
+
+    assert result == parsed
+
+
+@pytest.mark.asyncio
+async def test_parse_needs_review_passes_through_without_amount():
+    parsed = {
+        "record_status": "needs_review",
+        "non_transaction_reason": "appears financial but amount is missing",
+        "amount": None,
+        "merchant": "Unknown",
+        "transaction_type": "unknown",
+        "bank": "UOB",
+    }
+
+    with patch(
+        "worker.parsers.llm_email_parser.openai_client.parse_and_categorize",
+        new_callable=AsyncMock,
+        return_value=parsed,
+    ):
+        result = await llm_email_parser.parse_and_categorize("email body", "alerts@uob.com.sg")
+
+    assert result == parsed
 
 
 @pytest.mark.asyncio
@@ -74,6 +125,20 @@ async def test_parse_returns_none_on_failure():
 @pytest.mark.asyncio
 async def test_parse_returns_none_on_non_numeric_amount():
     parsed = {"amount": "not a number", "merchant": "TEST"}
+
+    with patch(
+        "worker.parsers.llm_email_parser.openai_client.parse_and_categorize",
+        new_callable=AsyncMock,
+        return_value=parsed,
+    ):
+        result = await llm_email_parser.parse_and_categorize("email", "sender")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_parse_returns_none_on_invalid_record_status():
+    parsed = {"record_status": "maybe", "amount": 5.50, "merchant": "TEST"}
 
     with patch(
         "worker.parsers.llm_email_parser.openai_client.parse_and_categorize",

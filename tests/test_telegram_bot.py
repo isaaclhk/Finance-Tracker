@@ -178,6 +178,30 @@ async def test_notify_bill_payment_reminder_includes_due_date():
 
 
 @pytest.mark.asyncio
+async def test_notify_needs_review_explains_no_retry():
+    email = type(
+        "Email",
+        (),
+        {
+            "sender": "unialerts@uobgroup.com",
+            "subject": "UOB Personal Internet Banking Notification Alerts",
+        },
+    )()
+    parsed = {"non_transaction_reason": "missing amount and account details"}
+
+    with patch("worker.bot.telegram_bot.send_message", new_callable=AsyncMock) as mock_send:
+        from worker.bot.telegram_bot import notify_needs_review
+
+        await notify_needs_review(email, parsed)
+
+    text = mock_send.call_args.kwargs.get("text") or mock_send.call_args[0][0]
+    plain_text = unescape(text)
+    assert "Bank alert needs review" in plain_text
+    assert "missing amount and account details" in plain_text
+    assert "will not keep retrying" in plain_text
+
+
+@pytest.mark.asyncio
 async def test_notify_pending_reviews_dispatches_category_confirmation():
     pending = [
         {
@@ -293,3 +317,20 @@ async def test_notify_pending_reviews_bill_payment_reminder():
         await notify_pending_reviews(pending)
 
     mock_reminder.assert_called_once_with(reminder)
+
+
+@pytest.mark.asyncio
+async def test_notify_pending_reviews_needs_review():
+    email = object()
+    parsed = {"non_transaction_reason": "missing amount"}
+    pending = [{"type": "needs_review", "email": email, "parsed": parsed}]
+
+    with patch(
+        "worker.bot.telegram_bot.notify_needs_review",
+        new_callable=AsyncMock,
+    ) as mock_needs_review:
+        from worker.bot.telegram_bot import notify_pending_reviews
+
+        await notify_pending_reviews(pending)
+
+    mock_needs_review.assert_called_once_with(email, parsed)

@@ -17,6 +17,7 @@ TRANSACTION_TYPES = [
     "refund",
     "reversal",
     "bill_payment",
+    "non_transaction",
     "unknown",
 ]
 
@@ -47,10 +48,20 @@ Return JSON with exactly these fields:
   "card_or_account": string (last 4 digits of card or account identifier),
   "destination_account": string (last 4 of destination card for bill payments, or null),
   "transaction_type": {_txn_types_str},
+  "record_status": "recordable" | "non_transaction" | "needs_review",
+  "non_transaction_reason": string | null,
   "bank": "DBS" | "OCBC" | "UOB" | "Trust" | "Syfe" | "unknown",
   "suggested_category": one of: {_categories_str} | null
 }}
 If any field cannot be determined, use null.
+Use record_status="recordable" only when the email is a transaction that should be
+recorded in Firefly. Use record_status="non_transaction" for login alerts, OTPs,
+marketing messages, payment reminders, and duplicate confirmation emails that do
+not themselves contain enough transaction details to record. Use
+record_status="needs_review" when the email appears financial but is missing
+critical transaction details.
+For non_transaction emails, set transaction_type="non_transaction" and explain
+the reason briefly in non_transaction_reason.
 If the email says "has been reversed", "reversal", or "transaction reversed",
 use transaction_type="reversal" — the date/time fields refer to the ORIGINAL
 charge, not the reversal notice. Use transaction_type="refund" only for
@@ -72,7 +83,7 @@ async def parse_and_categorize(email_body: str, sender: str) -> dict | None:
         try:
             response = await client.chat.completions.create(
                 model=OPENAI_PARSE_MODEL,
-                max_tokens=200,
+                max_tokens=300,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": PARSE_SYSTEM_PROMPT},

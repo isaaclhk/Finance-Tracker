@@ -16,9 +16,9 @@ from worker.utils.dedup import is_duplicate
 
 logger = logging.getLogger(__name__)
 
-_AMOUNT_HINT_RE = re.compile(
-    r"(?i)(?:\b(?:S\$|SGD|USD|EUR|GBP|JPY|MYR|THB|AUD|HKD)\s*\d|\$\s*\d|"
-    r"\d[\d,]*\.\d{2}\s*(?:SGD|USD|EUR|GBP|JPY|MYR|THB|AUD|HKD)\b)"
+_UOB_PAYNOW_CONFIRMATION_RE = re.compile(
+    r"\buob\s*-\s*your\s+paynow\s+transfer\s+to\b.+\bis\s+successfu\w*",
+    re.IGNORECASE,
 )
 
 
@@ -39,13 +39,19 @@ def _email_field(email: object, name: str) -> str:
 def _is_uob_non_transaction_alert(email: object) -> bool:
     sender = _email_field(email, "sender").lower()
     subject = _email_field(email, "subject").lower()
-    body = _email_field(email, "body")
+    content = f"{subject}\n{_email_field(email, 'body')}"
 
     if "unialerts@uobgroup.com" not in sender:
         return False
-    if "uob personal internet banking notification alerts" not in subject:
-        return False
-    return _AMOUNT_HINT_RE.search(body) is None
+    return _UOB_PAYNOW_CONFIRMATION_RE.search(content) is not None
+
+
+def _is_non_transaction(parsed: dict) -> bool:
+    return parsed.get("record_status") == "non_transaction"
+
+
+def _needs_review(parsed: dict) -> bool:
+    return parsed.get("record_status") == "needs_review"
 
 
 def _build_firefly_payload(
@@ -127,6 +133,20 @@ async def process_new_emails() -> ProcessResult:
                 result.pending_review.append(
                     {
                         "type": "parse_failure",
+                        "email": email,
+                    }
+                )
+                continue
+
+            if _is_non_transaction(parsed):
+                result.skipped += 1
+                continue
+
+            if _needs_review(parsed):
+                result.pending_review.append(
+                    {
+                        "type": "needs_review",
+                        "parsed": parsed,
                         "email": email,
                     }
                 )

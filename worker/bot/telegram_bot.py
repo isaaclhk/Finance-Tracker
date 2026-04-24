@@ -141,6 +141,21 @@ async def notify_validation_failed(parsed: dict, warnings: list[str]):
     )
 
 
+async def notify_needs_review(email: object, parsed: dict):
+    sender = _h(_email_field(email, "sender"))
+    subject = _h(_email_field(email, "subject", "Bank alert"))
+    reason = _h(parsed.get("non_transaction_reason") or "missing transaction details")
+    await send_message(
+        f"<b>⚠️ Bank alert needs review</b>\n"
+        f"──────────\n"
+        f"From: {sender}\n"
+        f"Subject: {subject}\n"
+        f"Reason: {reason}\n\n"
+        f"I did not record this alert. I will not keep retrying it automatically.",
+        parse_mode="HTML",
+    )
+
+
 async def notify_conversion_failed(parsed: dict, foreign_info: dict):
     merchant = _h(parsed.get("merchant") or "Unknown")
     currency = _h(foreign_info.get("currency", "?"))
@@ -225,6 +240,8 @@ async def notify_pending_reviews(pending_review: list[dict]):
             await notify_parse_failure(item["email"])
         elif item["type"] == "validation_failed":
             await notify_validation_failed(item["parsed"], item.get("warnings", []))
+        elif item["type"] == "needs_review":
+            await notify_needs_review(item["email"], item["parsed"])
         elif item["type"] == "conversion_failed":
             await notify_conversion_failed(item["parsed"], item["foreign_info"])
         elif item["type"] == "processing_error":
