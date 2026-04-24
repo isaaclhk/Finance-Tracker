@@ -4,21 +4,120 @@ A self-hosted personal finance tracking system for a Singapore-based couple. Aut
 
 ## How It Works
 
-```
-Bank emails (OCBC, UOB, Trust) --> Gmail --> Python Worker --> Firefly III
-IBKR Flex Query API ----------------------------^                |
-Manual updates (/update) -----------------------^                |
-                                                                 |
-                                            Firefly III Web UI + Telegram Bot
+### System Overview
+
+```mermaid
+flowchart LR
+    Banks["Bank alert emails<br/>OCBC, UOB, Trust"] --> Gmail["Gmail<br/>Bank Alerts label"]
+    Gmail --> Worker["Python worker<br/>FastAPI background tasks"]
+
+    Worker <--> OpenAI["OpenAI API<br/>email parsing and natural queries"]
+    Worker <--> Firefly["Firefly III<br/>accounts, transactions, categories, reports"]
+    Worker <--> Telegram["Telegram Bot API<br/>commands and review prompts"]
+    Worker <--> IBKR["IBKR Flex API<br/>portfolio value"]
+
+    Data["/app/data<br/>Gmail cursor<br/>bill reminder state<br/>salary config"] <--> Worker
+    User["You in Telegram"] <--> Telegram
+    FireflyUI["Firefly III Web UI"] <--> Firefly
 ```
 
-1. Bank transaction emails arrive in Gmail with a "Bank Alerts" label
-2. Worker polls Gmail every 5 minutes via History API (incremental), parses emails with GPT-4.1 nano
-3. Transactions are validated, deduplicated, and stored in Firefly III
-4. New merchants prompt category confirmation via Telegram inline keyboard
-5. Confirmed categories auto-create Firefly III rules for future transactions
-6. IBKR portfolio updates daily at 7am SGT via Flex Query API
-7. Recurring salaries auto-deposit at 8am SGT on configured day each month
+Firefly III is the financial source of truth. Mdm Huat reads bank alerts from Gmail, asks OpenAI to classify and parse them, records transactions in Firefly, and uses Telegram when something needs your attention. Local state in `/app/data` prevents repeated Gmail processing, duplicate Trust bill reminders, and repeated monthly salary deposits.
+
+### Email Processing Flow
+
+```mermaid
+flowchart TD
+    Start["Poll Gmail every few minutes"] --> Fetch{"Gmail cursor exists?"}
+    Fetch -->|"Yes"| History["Fetch changes with Gmail History API"]
+    Fetch -->|"No or expired"| Search["Search Bank Alerts after last timestamp"]
+    History --> Emails["Sort new emails by timestamp"]
+    Search --> Emails
+
+    Emails --> Preparse{"Known pre-parse case?"}
+    Preparse -->|"Trust bill reminder"| Trust{"Reminder key already sent?"}
+    Trust -->|"No"| TrustSend["Send one Telegram bill reminder<br/>save reminder key"]
+    Trust -->|"Yes"| SkipTrust["Skip duplicate reminder"]
+    Preparse -->|"UOB PayNow duplicate confirmation"| SkipUOB["Skip duplicate confirmation"]
+    Preparse -->|"No"| LLM["Parse and classify with GPT-4.1 nano"]
+
+    LLM --> Status{"record_status"}
+    Status -->|"non_transaction"| SkipNonTxn["Skip and do not retry"]
+    Status -->|"needs_review"| NeedsReview["Send Telegram review notice<br/>do not retry automatically"]
+    Status -->|"parse failure"| RetryParse["Send parse-failure notice<br/>hold cursor for retry"]
+    Status -->|"recordable"| Convert["Convert foreign currency to SGD if needed"]
+
+    Convert --> Validate["Validate amount, date, account hints, type"]
+    Validate --> MapAccount["Map card/account digits to Firefly account"]
+    MapAccount --> Reversal{"Reversal?"}
+    Reversal -->|"Yes"| MatchOriginal["Find matching original charge"]
+    MatchOriginal --> ReversalResult["Delete exact match or notify if missing/ambiguous"]
+    Reversal -->|"No"| Dedup["Check recent Firefly transactions for duplicates"]
+    Dedup -->|"Duplicate"| SkipDuplicate["Skip duplicate"]
+    Dedup -->|"New"| Create["Create Firefly transaction"]
+    Create --> Category["Send Telegram category confirmation"]
+
+    Convert -->|"Rate unavailable"| RetryConvert["Hold cursor for retry"]
+    Validate -->|"Invalid"| RetryValidate["Hold cursor for retry"]
+    MapAccount -->|"Unknown account"| RetryAccount["Hold cursor for retry"]
+    Create -->|"Error"| RetryError["Hold cursor for retry"]
+
+    TrustSend --> SaveCursor["Advance Gmail cursor"]
+    SkipTrust --> SaveCursor
+    SkipUOB --> SaveCursor
+    SkipNonTxn --> SaveCursor
+    NeedsReview --> SaveCursor
+    ReversalResult --> SaveCursor
+    SkipDuplicate --> SaveCursor
+    Category --> SaveCursor
+
+    RetryParse --> HoldCursor["Keep Gmail cursor in place"]
+    RetryConvert --> HoldCursor
+    RetryValidate --> HoldCursor
+    RetryAccount --> HoldCursor
+    RetryError --> HoldCursor
+```
+
+Trust credit-card bill emails are reminders only: they send one Telegram message per bill cycle and never create Firefly transactions. Non-transaction bank emails are skipped after classification so login alerts, OTPs, marketing, and duplicate confirmations do not retry forever.
+
+### Telegram And Automation Flow
+
+```mermaid
+flowchart LR
+    User["You in Telegram"] --> Bot["Mdm Huat Telegram bot"]
+
+    Bot --> Refresh["/refresh"]
+    Refresh --> EmailFlow["Run email processor"]
+    Refresh --> IBKRNow["Fetch IBKR Flex value"]
+
+    Bot --> ReadCommands["/balance<br/>/spent<br/>/summary<br/>/lastupdate"]
+    ReadCommands --> FireflyRead["Read Firefly accounts and transactions"]
+
+    Bot --> WriteCommands["/income<br/>/update"]
+    WriteCommands --> FireflyWrite["Create Firefly transactions<br/>or balance adjustments"]
+
+    Bot --> SalaryCommand["/salary"]
+    SalaryCommand --> SalaryConfig["Update salary config<br/>/app/data/salary_config.json"]
+
+    Bot --> Natural["Any non-command message"]
+    Natural --> QueryLLM["Ask OpenAI with Firefly context"]
+    QueryLLM --> FireflyRead
+
+    CategoryPrompt["Category confirmation buttons"] --> Callback["Telegram callback handler"]
+    Callback --> CategoryUpdate["Update Firefly category_name"]
+
+    DailyIBKR["Daily 7am SGT job"] --> IBKRAuto["Fetch IBKR Flex value"]
+    IBKRAuto --> FireflyWrite
+
+    DailySalary["Daily 8am SGT job"] --> SalaryCheck["Check configured salary dates"]
+    SalaryCheck --> FireflyWrite
+
+    FireflyRead --> Reply["Telegram reply"]
+    FireflyWrite --> Reply
+    EmailFlow --> ReviewPrompts["Telegram review prompts"]
+    IBKRNow --> Reply
+```
+
+For ordinary spending, Firefly gets one generic expense account: `Merchant Spend`. The merchant name is kept in the transaction `description`, and the spend category is stored in Firefly's `category_name`. Telegram category confirmations update `category_name`, while `/spent` and `/summary` still use the description to show merchant-level reporting.
 
 ## Telegram Bot Commands
 
