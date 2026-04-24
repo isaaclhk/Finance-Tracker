@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from worker.integrations import exchange_rate, firefly_client, gmail_client
 from worker.parsers import llm_email_parser
 from worker.parsers.validator import WARNING_LARGE_AMOUNT, validate_parsed_transaction
-from worker.services import reversal_matcher
+from worker.services import bill_reminders, reversal_matcher
 from worker.services.account_mapper import (
     ACCOUNT_MAP,
     get_firefly_transaction_type,
@@ -82,6 +82,17 @@ async def process_new_emails() -> ProcessResult:
 
     for email in sorted(emails, key=lambda e: e.timestamp or ""):
         try:
+            reminder = bill_reminders.detect_trust_bill_reminder(email)
+            if reminder:
+                if bill_reminders.was_sent(reminder["key"]):
+                    result.skipped += 1
+                    continue
+
+                bill_reminders.mark_sent(reminder)
+                result.skipped += 1
+                result.pending_review.append(reminder)
+                continue
+
             parsed = await llm_email_parser.parse_and_categorize(email.body, email.sender)
             if parsed is None:
                 should_save_cursor = False

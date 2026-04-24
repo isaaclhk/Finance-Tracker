@@ -155,6 +155,29 @@ async def test_send_large_amount_confirmation_foreign_rate_none():
 
 
 @pytest.mark.asyncio
+async def test_notify_bill_payment_reminder_includes_due_date():
+    reminder = {
+        "type": "bill_payment_reminder",
+        "bank": "Trust",
+        "account": "Trust credit card",
+        "due_in_days": 3,
+        "due_date": "2026-04-27",
+    }
+
+    with patch("worker.bot.telegram_bot.send_message", new_callable=AsyncMock) as mock_send:
+        from worker.bot.telegram_bot import notify_bill_payment_reminder
+
+        await notify_bill_payment_reminder(reminder)
+
+    text = mock_send.call_args.kwargs.get("text") or mock_send.call_args[0][0]
+    plain_text = unescape(text)
+    assert "Trust card bill reminder" in plain_text
+    assert "Payment is due in 3 days" in plain_text
+    assert "2026-04-27" in plain_text
+    assert "Please pay the Trust credit card bill" in plain_text
+
+
+@pytest.mark.asyncio
 async def test_notify_pending_reviews_dispatches_category_confirmation():
     pending = [
         {
@@ -248,3 +271,25 @@ async def test_notify_pending_reviews_unknown_account():
 
     mock_cat.assert_not_called()
     mock_unknown.assert_called_once_with(parsed)
+
+
+@pytest.mark.asyncio
+async def test_notify_pending_reviews_bill_payment_reminder():
+    reminder = {
+        "type": "bill_payment_reminder",
+        "bank": "Trust",
+        "account": "Trust credit card",
+        "due_in_days": 1,
+        "due_date": "2026-04-27",
+    }
+    pending = [reminder]
+
+    with patch(
+        "worker.bot.telegram_bot.notify_bill_payment_reminder",
+        new_callable=AsyncMock,
+    ) as mock_reminder:
+        from worker.bot.telegram_bot import notify_pending_reviews
+
+        await notify_pending_reviews(pending)
+
+    mock_reminder.assert_called_once_with(reminder)

@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -143,6 +144,144 @@ async def test_process_skips_duplicates():
         result = await process_new_emails()
 
     assert result.new_count == 0
+
+
+@pytest.mark.asyncio
+async def test_process_trust_bill_reminder_sends_once_and_saves_cursor(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "worker.services.bill_reminders.BILL_REMINDER_STATE_PATH",
+        str(tmp_path / "bill_reminders.json"),
+    )
+    email = Email(
+        message_id="trust-bill-1",
+        sender="Trust <from_us@trustbank.sg>",
+        subject="3 days left to pay your Trust credit card bill ⏰",
+        body="Please pay your Trust credit card bill.",
+        timestamp="2026-04-24T09:00:00+08:00",
+    )
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T09:00:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+        ) as mock_parse,
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_called_once_with(99999, "2026-04-24T09:00:00+08:00")
+    mock_parse.assert_not_called()
+    mock_create.assert_not_called()
+    assert result.cursor_saved is True
+    assert result.skipped == 1
+    assert result.deferred == 0
+    assert result.pending_review == [
+        {
+            "type": "bill_payment_reminder",
+            "bank": "Trust",
+            "account": "Trust credit card",
+            "due_in_days": 3,
+            "due_date": "2026-04-27",
+            "key": "Trust:credit_card:2026-04-27",
+            "subject": "3 days left to pay your Trust credit card bill ⏰",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_process_trust_bill_reminder_skips_duplicate_due_date(tmp_path, monkeypatch):
+    state_path = tmp_path / "bill_reminders.json"
+    state_path.write_text(
+        json.dumps({"sent": {"Trust:credit_card:2026-04-27": {"sent_at": "2026-04-24"}}})
+    )
+    monkeypatch.setattr(
+        "worker.services.bill_reminders.BILL_REMINDER_STATE_PATH",
+        str(state_path),
+    )
+    email = Email(
+        message_id="trust-bill-2",
+        sender="Trust <from_us@trustbank.sg>",
+        subject="1 day left to pay your Trust credit card bill",
+        body="Please pay your Trust credit card bill.",
+        timestamp="2026-04-26T09:00:00+08:00",
+    )
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-26T09:00:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+        ) as mock_parse,
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_called_once_with(99999, "2026-04-26T09:00:00+08:00")
+    mock_parse.assert_not_called()
+    mock_create.assert_not_called()
+    assert result.cursor_saved is True
+    assert result.skipped == 1
+    assert result.pending_review == []
+
+
+@pytest.mark.asyncio
+async def test_process_trust_bill_reminder_fallback_dedupes_by_month(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "worker.services.bill_reminders.BILL_REMINDER_STATE_PATH",
+        str(tmp_path / "bill_reminders.json"),
+    )
+    email = Email(
+        message_id="trust-bill-fallback",
+        sender="Trust <from_us@trustbank.sg>",
+        subject="Reminder: pay your Trust credit card bill",
+        body="Please pay your Trust credit card bill.",
+        timestamp="2026-04-24T09:00:00+08:00",
+    )
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T09:00:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+        ) as mock_parse,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_called_once_with(99999, "2026-04-24T09:00:00+08:00")
+    mock_parse.assert_not_called()
+    assert result.cursor_saved is True
+    assert result.skipped == 1
+    assert result.pending_review[0]["key"] == "Trust:credit_card:2026-04"
+    assert result.pending_review[0]["due_date"] is None
+    assert result.pending_review[0]["due_in_days"] is None
 
 
 @pytest.mark.asyncio

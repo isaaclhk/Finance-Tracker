@@ -168,6 +168,30 @@ async def notify_processing_error(email: object):
     )
 
 
+async def notify_bill_payment_reminder(reminder: dict):
+    bank = _h(reminder.get("bank") or "Bank")
+    account = _h(reminder.get("account") or "credit card")
+    days_left = reminder.get("due_in_days")
+    due_date = reminder.get("due_date")
+
+    if days_left is None:
+        due_line = "Payment is due soon."
+    else:
+        day_word = "day" if days_left == 1 else "days"
+        due_line = f"Payment is due in {days_left} {day_word}."
+
+    if due_date:
+        due_line = f"{due_line} Due date: {_h(due_date)}."
+
+    await send_message(
+        f"💳 <b>{bank} card bill reminder</b>\n"
+        f"──────────\n"
+        f"{due_line}\n"
+        f"Please pay the {account} bill.",
+        parse_mode="HTML",
+    )
+
+
 async def send_large_amount_confirmation(parsed: dict, foreign_info: dict | None = None):
     merchant = _h(parsed.get("merchant") or "Unknown")
     amount = parsed.get("amount", 0)
@@ -205,6 +229,8 @@ async def notify_pending_reviews(pending_review: list[dict]):
             await notify_conversion_failed(item["parsed"], item["foreign_info"])
         elif item["type"] == "processing_error":
             await notify_processing_error(item["email"])
+        elif item["type"] == "bill_payment_reminder":
+            await notify_bill_payment_reminder(item)
         elif item["type"] == "reversal_applied":
             await notify_reversal_applied(item["parsed"], item["deleted"])
         elif item["type"] == "reversal_orphan":
