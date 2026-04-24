@@ -78,29 +78,3 @@ async def test_parse_and_categorize_returns_none_after_two_failures():
         result = await openai_client.parse_and_categorize("body", "sender")
 
     assert result is None
-
-
-@pytest.mark.asyncio
-async def test_query_success():
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(
-        return_value=_make_completion("Your spending is $500 this month.")
-    )
-
-    with patch.object(openai_client, "get_client", return_value=mock_client):
-        result = await openai_client.query([{"role": "user", "content": "how much did I spend?"}])
-
-    assert result == "Your spending is $500 this month."
-
-
-@pytest.mark.asyncio
-async def test_query_returns_fallback_on_error():
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(
-        side_effect=openai_client.OpenAIError("API error")
-    )
-
-    with patch.object(openai_client, "get_client", return_value=mock_client):
-        result = await openai_client.query([{"role": "user", "content": "test"}])
-
-    assert "couldn't process" in result.lower()

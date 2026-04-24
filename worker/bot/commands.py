@@ -208,6 +208,8 @@ async def handle_lastupdate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 MONTH_NAMES = {m.lower(): i for i, m in enumerate(calendar.month_name) if m}
 MONTH_ABBR = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
+SUPPORTED_PERIOD_EXAMPLES = "today, last week, march 2025, jan to mar 2025"
+SUPPORTED_DATE_EXAMPLES = "yesterday, 25 mar, 1 jan 2026, 2026-01-01"
 
 
 def _parse_period(text: str) -> tuple[date, date, str] | None:
@@ -296,29 +298,56 @@ def _resolve_month(text: str) -> int | None:
     return None
 
 
-async def _llm_parse_period(text: str) -> tuple[date, date, str] | None:
+def _parse_explicit_date(text: str) -> date | None:
     today = today_sgt()
-    prompt = (
-        f"Today is {today.isoformat()}. "
-        f'The user wants to see spending for: "{text}". '
-        f"Return JSON with exactly: "
-        f'{{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "label": "short description"}}. '
-        f"Only return JSON, nothing else."
-    )
+    text = text.lower().strip()
+
     try:
-        import json
-
-        from worker.integrations import openai_client
-
-        raw = await openai_client.query([{"role": "user", "content": prompt}])
-        result = json.loads(raw)
-        if "start" in result and "end" in result:
-            start = date.fromisoformat(result["start"])
-            end = date.fromisoformat(result["end"])
-            label = result.get("label", text)
-            return start, min(end, today), label
-    except Exception:
+        parsed = date.fromisoformat(text)
+        return parsed if parsed <= today else None
+    except ValueError:
         pass
+
+    slash_match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if slash_match:
+        day = int(slash_match.group(1))
+        month = int(slash_match.group(2))
+        year = int(slash_match.group(3))
+        try:
+            parsed = date(year, month, day)
+        except ValueError:
+            return None
+        return parsed if parsed <= today else None
+
+    word_match = re.fullmatch(r"(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?", text)
+    if word_match:
+        day = int(word_match.group(1))
+        month = _resolve_month(word_match.group(2))
+        year = int(word_match.group(3)) if word_match.group(3) else today.year
+        if month is None:
+            return None
+        try:
+            parsed = date(year, month, day)
+        except ValueError:
+            return None
+        return parsed if parsed <= today else None
+
+    return None
+
+
+def _parse_single_date(text: str) -> date | None:
+    text = text.strip()
+    if not text:
+        return None
+
+    parsed = _parse_explicit_date(text)
+    if parsed is not None:
+        return parsed
+
+    period = _parse_period(text)
+    if period and period[0] == period[1]:
+        return period[0]
+
     return None
 
 
@@ -329,20 +358,22 @@ async def handle_spent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Split category filter from period text
     # Try the full text as a period first, then try without the last word as category
     category_filter = None
-    result = _parse_period(raw_text)
+    result = _parse_period(raw_text) if raw_text else None
 
-    if result is None and len(args) > 1:
+    if raw_text and result is None and len(args) > 1:
         # Last word might be a category filter
         category_filter = args[-1]
         result = _parse_period(" ".join(args[:-1]))
 
-    if result is None:
-        # LLM fallback
-        result = await _llm_parse_period(raw_text)
+    if raw_text and result is None:
+        await update.message.reply_text(
+            f"Could not understand that period. Try: {SUPPORTED_PERIOD_EXAMPLES}."
+        )
+        return
 
     if result is None:
         today = today_sgt()
-        result = (today, today, raw_text or "today")
+        result = (today, today, "today")
 
     start, end, period_label = result
 
@@ -396,8 +427,12 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Parse period or default to this month
     result = _parse_period(raw_text) if raw_text else None
-    if result is None and raw_text:
-        result = await _llm_parse_period(raw_text)
+    if raw_text and result is None:
+        await update.message.reply_text(
+            f"Could not understand that period. Try: {SUPPORTED_PERIOD_EXAMPLES}."
+        )
+        return
+
     if result is None:
         result = (today.replace(day=1), today, "this month")
 
@@ -669,9 +704,6 @@ HELP_DETAILS = {
         "  jan, february, mar 2025\n"
         "  jan to mar, feb - jun 2025\n"
         "\n"
-        "<b>Anything else</b> → AI interprets it\n"
-        '<i>e.g. "since christmas", "Q1 2026"</i>\n'
-        "\n"
         "<b>Category filter</b> (optional, last word):\n"
         "  /spent this month food\n"
         "  /spent last week transport"
@@ -800,8 +832,6 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n"
         "──────────\n"
         "Type <b>/help [command]</b> for details\n"
-        "<i>e.g. /help spent</i>\n"
-        "\n"
-        "Or just ask me anything!",
+        "<i>e.g. /help spent</i>",
         parse_mode="HTML",
     )

@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from worker.bot.commands import _parse_period, _update_account_balance
+from worker.bot.commands import _parse_period, _parse_single_date, _update_account_balance
 from worker.utils.time import today_sgt
 
 # ── _parse_period tests ─────────────────────────────────────────────
@@ -163,6 +164,21 @@ def test_parse_period_month_range_dash():
 
 def test_parse_period_unknown_returns_none():
     result = _parse_period("some random text")
+    assert result is None
+
+
+def test_parse_single_date_named_day():
+    result = _parse_single_date("1 jan 2026")
+    assert result == date(2026, 1, 1)
+
+
+def test_parse_single_date_relative_day():
+    result = _parse_single_date("yesterday")
+    assert result == today_sgt() - timedelta(days=1)
+
+
+def test_parse_single_date_invalid_returns_none():
+    result = _parse_single_date("this month")
     assert result is None
 
 
@@ -333,3 +349,39 @@ async def test_update_skips_revenue_accounts():
         result = await _update_account_balance("Salary", 5000.0)
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_handle_spent_invalid_period_returns_usage_error():
+    update = SimpleNamespace(message=SimpleNamespace(reply_text=AsyncMock()))
+    context = SimpleNamespace(args=["since", "christmas"])
+
+    with patch(
+        "worker.bot.commands.firefly_client.get_transactions",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        from worker.bot.commands import handle_spent
+
+        await handle_spent(update, context)
+
+    mock_get.assert_not_called()
+    reply = update.message.reply_text.await_args.args[0]
+    assert "Could not understand that period" in reply
+
+
+@pytest.mark.asyncio
+async def test_handle_summary_invalid_period_returns_usage_error():
+    update = SimpleNamespace(message=SimpleNamespace(reply_text=AsyncMock()))
+    context = SimpleNamespace(args=["q1", "2026"])
+
+    with patch(
+        "worker.bot.commands.firefly_client.get_transactions",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        from worker.bot.commands import handle_summary
+
+        await handle_summary(update, context)
+
+    mock_get.assert_not_called()
+    reply = update.message.reply_text.await_args.args[0]
+    assert "Could not understand that period" in reply

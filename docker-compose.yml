@@ -25,7 +25,6 @@ services:
       firefly:
         condition: service_healthy
     volumes:
-      - ./soul.md:/app/soul.md:ro
       - worker_data:/app/data
     env_file:
       - .env
@@ -41,8 +40,6 @@ services:
       VALIDATION_LARGE_AMOUNT_THRESHOLD: ${VALIDATION_LARGE_AMOUNT_THRESHOLD:-5000}
       VALIDATION_SMALL_AMOUNT_MIN: ${VALIDATION_SMALL_AMOUNT_MIN:-0.01}
       VALIDATION_MAX_AMOUNT: ${VALIDATION_MAX_AMOUNT:-50000}
-      CONVERSATION_HISTORY_LENGTH: ${CONVERSATION_HISTORY_LENGTH:-5}
-      CONVERSATION_TIMEOUT_MINUTES: ${CONVERSATION_TIMEOUT_MINUTES:-30}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8080/health'); import json; d=json.loads(r.read()); exit(0 if d['status']=='ok' else 1)"]
       interval: 5m

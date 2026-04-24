@@ -1,4 +1,5 @@
 from html import unescape
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -334,3 +335,70 @@ async def test_notify_pending_reviews_needs_review():
         await notify_pending_reviews(pending)
 
     mock_needs_review.assert_called_once_with(email, parsed)
+
+
+@pytest.mark.asyncio
+async def test_handle_plain_text_without_pending_date_replies_with_command_hint():
+    from worker.bot.callbacks import pending_date_input
+    from worker.bot.telegram_bot import handle_plain_text
+
+    pending_date_input.clear()
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=123),
+        message=SimpleNamespace(text="hello", reply_text=AsyncMock()),
+    )
+
+    await handle_plain_text(update, None)
+
+    update.message.reply_text.assert_awaited_once_with("Use /help or a slash command.")
+    pending_date_input.clear()
+
+
+@pytest.mark.asyncio
+async def test_handle_plain_text_updates_pending_date():
+    from worker.bot.callbacks import pending_date_input
+    from worker.bot.telegram_bot import handle_plain_text
+
+    pending_date_input.clear()
+    pending_date_input[123] = "42"
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=123),
+        message=SimpleNamespace(text="1 jan 2026", reply_text=AsyncMock()),
+    )
+
+    with patch(
+        "worker.bot.telegram_bot.firefly_client.update_transaction",
+        new_callable=AsyncMock,
+    ) as mock_update:
+        await handle_plain_text(update, None)
+
+    mock_update.assert_awaited_once_with(42, {"transactions": [{"date": "2026-01-01"}]})
+    update.message.reply_text.assert_awaited_once_with("Date set to 01 Jan 2026")
+    assert 123 not in pending_date_input
+    pending_date_input.clear()
+
+
+@pytest.mark.asyncio
+async def test_handle_plain_text_invalid_pending_date_keeps_pending_state():
+    from worker.bot.callbacks import pending_date_input
+    from worker.bot.telegram_bot import handle_plain_text
+
+    pending_date_input.clear()
+    pending_date_input[123] = "42"
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=123),
+        message=SimpleNamespace(text="since christmas", reply_text=AsyncMock()),
+    )
+
+    with patch(
+        "worker.bot.telegram_bot.firefly_client.update_transaction",
+        new_callable=AsyncMock,
+    ) as mock_update:
+        await handle_plain_text(update, None)
+
+    mock_update.assert_not_called()
+    update.message.reply_text.assert_awaited_once()
+    reply = update.message.reply_text.await_args.args[0]
+    assert "Could not understand that date" in reply
+    assert pending_date_input[123] == "42"
+    pending_date_input.clear()

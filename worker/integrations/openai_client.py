@@ -3,7 +3,7 @@ import logging
 
 from openai import AsyncOpenAI, OpenAIError
 
-from worker.config import OPENAI_API_KEY, OPENAI_PARSE_MODEL, OPENAI_QUERY_MODEL
+from worker.config import OPENAI_API_KEY, OPENAI_PARSE_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -103,17 +103,3 @@ async def parse_and_categorize(email_body: str, sender: str) -> dict | None:
         except OpenAIError:
             logger.exception("OpenAI parse_and_categorize failed")
             return None
-
-
-async def query(messages: list[dict]) -> str:
-    client = get_client()
-    try:
-        response = await client.chat.completions.create(
-            model=OPENAI_QUERY_MODEL,
-            max_tokens=500,
-            messages=messages,
-        )
-        return response.choices[0].message.content
-    except OpenAIError:
-        logger.exception("OpenAI query failed")
-        return "Sorry, I couldn't process that query right now."

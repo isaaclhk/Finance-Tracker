@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from html import escape
 
+import httpx
 from telegram import Bot, Update
 from telegram.ext import (
     Application,
@@ -13,6 +14,7 @@ from telegram.ext import (
 )
 
 from worker.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from worker.integrations import firefly_client
 from worker.utils.time import now_sgt
 
 logger = logging.getLogger(__name__)
@@ -64,7 +66,6 @@ def get_application() -> Application:
             handle_summary,
             handle_update,
         )
-        from worker.bot.llm_query import handle_natural_query
 
         _application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
@@ -81,7 +82,7 @@ def get_application() -> Application:
         _application.add_handler(
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
-                auth_required(handle_natural_query),
+                auth_required(handle_plain_text),
             )
         )
 
@@ -95,6 +96,48 @@ def get_bot() -> Bot:
 async def send_message(text: str, **kwargs):
     bot = get_bot()
     await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text, **kwargs)
+
+
+async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from worker.bot.callbacks import pending_date_input
+
+    chat_id = update.effective_chat.id
+    text = (update.message.text or "").strip()
+
+    if chat_id in pending_date_input:
+        await _handle_pending_date_reply(update, chat_id, text)
+        return
+
+    await update.message.reply_text("Use /help or a slash command.")
+
+
+async def _handle_pending_date_reply(update: Update, chat_id: int, text: str):
+    from worker.bot.callbacks import pending_date_input
+    from worker.bot.commands import SUPPORTED_DATE_EXAMPLES, _parse_single_date
+
+    txn_id = pending_date_input.get(chat_id)
+    new_date = _parse_single_date(text)
+    if txn_id is None:
+        return
+
+    if not new_date:
+        await update.message.reply_text(
+            f"Could not understand that date. Try: {SUPPORTED_DATE_EXAMPLES}."
+        )
+        return
+
+    try:
+        await firefly_client.update_transaction(
+            int(txn_id),
+            {"transactions": [{"date": new_date.isoformat()}]},
+        )
+    except httpx.HTTPStatusError:
+        logger.exception("Failed to update transaction date %s", txn_id)
+        await update.message.reply_text("Failed to change date.")
+        return
+
+    pending_date_input.pop(chat_id, None)
+    await update.message.reply_text(f"Date set to {new_date.strftime('%d %b %Y')}")
 
 
 async def notify_parse_failure(email: object):

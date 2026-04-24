@@ -1,6 +1,6 @@
 # Finance Tracker
 
-A self-hosted personal finance tracking system for a Singapore-based couple. Automatically ingests bank transactions from email alerts, categorizes them with LLM assistance, and provides a Telegram bot for queries and management.
+A self-hosted personal finance tracking system for a Singapore-based couple. Automatically ingests bank transactions from email alerts, categorizes them with LLM assistance, and provides a Telegram bot for commands and management.
 
 ## How It Works
 
@@ -11,7 +11,7 @@ flowchart LR
     Banks["Bank alert emails<br/>OCBC, UOB, Trust"] --> Gmail["Gmail<br/>Bank Alerts label"]
     Gmail --> Worker["Python worker<br/>FastAPI background tasks"]
 
-    Worker <--> OpenAI["OpenAI API<br/>email parsing and natural queries"]
+    Worker <--> OpenAI["OpenAI API<br/>email parsing"]
     Worker <--> Firefly["Firefly III<br/>accounts, transactions, categories, reports"]
     Worker <--> Telegram["Telegram Bot API<br/>commands and review prompts"]
     Worker <--> IBKR["IBKR Flex API<br/>portfolio value"]
@@ -98,9 +98,8 @@ flowchart LR
     Bot --> SalaryCommand["/salary"]
     SalaryCommand --> SalaryConfig["Update salary config<br/>/app/data/salary_config.json"]
 
-    Bot --> Natural["Any non-command message"]
-    Natural --> QueryLLM["Ask OpenAI with Firefly context"]
-    QueryLLM --> FireflyRead
+    Bot --> TextReply["Non-command text"]
+    TextReply --> DateReply["Pending date reply<br/>or short command hint"]
 
     CategoryPrompt["Category confirmation buttons"] --> Callback["Telegram callback handler"]
     Callback --> CategoryUpdate["Update Firefly category_name"]
@@ -133,18 +132,18 @@ For ordinary spending, Firefly gets one generic expense account: `Merchant Spend
 | `/lastupdate` | Show last activity date per account |
 | `/help [command]` | Help overview or detailed command usage |
 
-Any non-command message is answered by the LLM with your financial context.
+Non-command text is used only for pending date replies after `/income`; otherwise the bot asks you to use `/help` or a slash command.
 
 ### Period Formats
 
-`today`, `yesterday`, `this week`, `last week`, `this month`, `last month`, `this year`, `last year`, `last N days/weeks/months`, `january`, `feb 2025`, `jan to mar`, `feb - jun 2025`, or any natural language (LLM fallback).
+`today`, `yesterday`, `this week`, `last week`, `this month`, `last month`, `this year`, `last year`, `last N days/weeks/months`, `january`, `feb 2025`, `jan to mar`, `feb - jun 2025`.
 
 ## Tech Stack
 
 - **Firefly III** -- financial backend + web dashboard
 - **Python 3.11+ / FastAPI** -- worker service
 - **python-telegram-bot** -- Telegram bot
-- **OpenAI API** -- GPT-4.1 nano (parsing), GPT-4.1 mini (queries)
+- **OpenAI API** -- GPT-4.1 mini (email parsing)
 - **Gmail API** -- email ingestion (label-based filtering)
 - **IBKR Flex Web Service** -- investment portfolio data
 - **Docker Compose** -- deployment
@@ -157,7 +156,6 @@ Any non-command message is answered by the LLM with your financial context.
 finance-tracker/
 ├── docker-compose.yml
 ├── .env.example
-├── soul.md                    # Bot personality (Mdm Huat)
 ├── pyproject.toml
 ├── worker/
 │   ├── Dockerfile
@@ -167,7 +165,6 @@ finance-tracker/
 │   │   ├── telegram_bot.py    # Bot setup, auth, notifications
 │   │   ├── commands.py        # All command handlers
 │   │   ├── callbacks.py       # Category confirmation keyboards
-│   │   └── llm_query.py       # Natural language query handler
 │   ├── parsers/
 │   │   ├── llm_email_parser.py
 │   │   └── validator.py
