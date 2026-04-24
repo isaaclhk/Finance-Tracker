@@ -92,6 +92,24 @@ def test_build_firefly_payload_bill_payment_to_mapped_card():
     assert txn["destination_name"] == "Trust Card"
 
 
+def test_build_firefly_payload_bill_payment_to_direct_card_account_name():
+    validated = {
+        "amount": 250.0,
+        "merchant": "UOB Absolute Cashback Amex Payment",
+        "date": "2026-03-25",
+        "time": None,
+        "destination_account": "UOB Absolute Cashback Amex",
+        "transaction_type": "bill_payment",
+    }
+    payload = _build_firefly_payload(validated, "UOB One Account")
+    txn = payload["transactions"][0]
+
+    assert txn["type"] == "withdrawal"
+    assert txn["description"] == "UOB Absolute Cashback Amex Payment"
+    assert txn["source_name"] == "UOB One Account"
+    assert txn["destination_name"] == "UOB Absolute Cashback Amex"
+
+
 @pytest.mark.asyncio
 async def test_process_new_emails_success():
     email = Email(
@@ -367,6 +385,56 @@ async def test_process_skips_trust_repayment_receipt_without_source():
 
 
 @pytest.mark.asyncio
+async def test_process_skips_uob_absolute_repayment_receipt_without_source():
+    email = Email(
+        message_id="uob-absolute-repayment-receipt",
+        sender="UOB Cards <uobcards@uobgroup.com>",
+        subject="Credit Card Repayment",
+        body="Your repayment of SGD 800.00 to UOB Absolute Cashback Amex has been received.",
+        timestamp="2026-04-24T18:11:00+08:00",
+    )
+    parsed = {
+        "record_status": "recordable",
+        "amount": 800.00,
+        "merchant": "UOB Absolute Cashback Amex",
+        "date": "2026-04-24",
+        "time": "18:11",
+        "card_or_account": None,
+        "transaction_type": "bill_payment",
+        "bank": "UOB",
+        "suggested_category": None,
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T18:11:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    mock_save.assert_called_once_with(99999, "2026-04-24T18:11:00+08:00")
+    mock_create.assert_not_called()
+    assert result.cursor_saved is True
+    assert result.skipped == 1
+    assert result.deferred == 0
+    assert result.pending_review == []
+
+
+@pytest.mark.asyncio
 async def test_process_records_uob_payment_to_trust_as_silent_bill_payment():
     email = Email(
         message_id="uob-trust-payment",
@@ -428,6 +496,73 @@ async def test_process_records_uob_payment_to_trust_as_silent_bill_payment():
     assert txn["source_name"] == "UOB One Account"
     assert txn["destination_name"] == "Trust Card"
     mock_duplicate.assert_awaited_once()
+    mock_save.assert_called_once_with(99999, "2026-04-24T18:11:00+08:00")
+    assert result.cursor_saved is True
+    assert result.new_count == 1
+    assert result.pending_review == []
+
+
+@pytest.mark.asyncio
+async def test_process_records_payment_to_uob_absolute_as_silent_bill_payment():
+    email = Email(
+        message_id="ocbc-uob-absolute-payment",
+        sender="OCBC Alerts <alerts@ocbc.com>",
+        subject="Funds transfer alert",
+        body=(
+            "You transferred SGD 800.00 to UOB Absolute Cashback Amex "
+            "from your account ending 9012 on 24 Apr 2026."
+        ),
+        timestamp="2026-04-24T18:11:00+08:00",
+    )
+    parsed = {
+        "record_status": "recordable",
+        "amount": 800.00,
+        "merchant": "UOB Absolute Cashback Amex",
+        "date": "2026-04-24",
+        "time": "18:11",
+        "card_or_account": "9012",
+        "transaction_type": "fund_transfer",
+        "bank": "OCBC",
+        "suggested_category": None,
+    }
+    firefly_txn = {
+        "id": "89",
+        "attributes": {"transactions": [{"description": "UOB Absolute Cashback Amex Payment"}]},
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-24T18:11:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.is_duplicate",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+            return_value=firefly_txn,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    payload = mock_create.await_args.args[0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "withdrawal"
+    assert txn["description"] == "UOB Absolute Cashback Amex Payment"
+    assert txn["source_name"] == "OCBC Child Savings Account"
+    assert txn["destination_name"] == "UOB Absolute Cashback Amex"
     mock_save.assert_called_once_with(99999, "2026-04-24T18:11:00+08:00")
     assert result.cursor_saved is True
     assert result.new_count == 1

@@ -13,6 +13,17 @@ def test_map_by_bank_fallback():
     assert map_to_firefly_account({"card_or_account": "9999", "bank": "Trust"}) == "Trust Card"
 
 
+def test_map_known_credit_card_destination_aliases():
+    assert (
+        map_to_firefly_account({"card_or_account": "UOB Absolute", "bank": "unknown"})
+        == "UOB Absolute Cashback Amex"
+    )
+    assert (
+        map_to_firefly_account({"card_or_account": "UOB Credit Card", "bank": "unknown"})
+        == "UOB Absolute Cashback Amex"
+    )
+
+
 def test_map_unknown_returns_none():
     assert map_to_firefly_account({"card_or_account": "9999", "bank": "unknown"}) is None
     assert map_to_firefly_account({}) is None

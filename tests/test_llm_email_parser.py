@@ -19,11 +19,12 @@ def test_parse_prompt_guides_record_status_classification():
     assert "needs_review" in prompt
 
 
-def test_parse_prompt_guides_trust_card_payment_classification():
+def test_parse_prompt_guides_card_payment_classification():
     prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
     assert "trust bank" in prompt
+    assert "uob absolute" in prompt
     assert "bill_payment" in prompt
-    assert 'destination_account="trust"' in prompt
+    assert "paid card account" in prompt
 
 
 @pytest.mark.asyncio

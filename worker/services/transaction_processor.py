@@ -20,13 +20,47 @@ _UOB_PAYNOW_CONFIRMATION_RE = re.compile(
     r"\buob\s*-\s*your\s+paynow\s+transfer\s+to\b.+\bis\s+successfu\w*",
     re.IGNORECASE,
 )
-_TRUST_CARD_PAYMENT_RE = re.compile(
-    r"^\s*trust\s*$|\btrust\s+(?:bank|card|credit\s+card)\b",
-    re.IGNORECASE,
-)
-_TRUST_REPAYMENT_RECEIPT_RE = re.compile(
+_CARD_REPAYMENT_RECEIPT_RE = re.compile(
     r"\b(?:credit\s+card\s+)?repayment\b|\bpayment\s+received\b",
     re.IGNORECASE,
+)
+
+
+def _account_name_for(*hints: str, default: str) -> str:
+    for hint in hints:
+        if hint in ACCOUNT_MAP:
+            return ACCOUNT_MAP[hint]
+        if hint in ACCOUNT_MAP.values():
+            return hint
+    return default
+
+
+_CREDIT_CARD_PAYMENT_RULES = (
+    {
+        "account": _account_name_for("Trust", "Trust Card", default="Trust Card"),
+        "issuer_banks": {"Trust"},
+        "issuer_pattern": re.compile(r"\btrust\b|trustbank\.sg", re.IGNORECASE),
+        "aliases": (
+            re.compile(r"^\s*trust\s*$", re.IGNORECASE),
+            re.compile(r"\btrust\s+(?:bank|card|credit\s+card)\b", re.IGNORECASE),
+        ),
+    },
+    {
+        "account": _account_name_for(
+            "UOB Absolute",
+            "UOB Absolute Cashback Amex",
+            "UOB Credit Card",
+            default="UOB Absolute Cashback Amex",
+        ),
+        "issuer_banks": {"UOB"},
+        "issuer_pattern": re.compile(r"\buob\b|uobgroup\.com", re.IGNORECASE),
+        "aliases": (
+            re.compile(r"\buob\s+absolute\b", re.IGNORECASE),
+            re.compile(r"\babsolute\s+cashback\b", re.IGNORECASE),
+            re.compile(r"\buob\s+(?:credit\s+)?card\b", re.IGNORECASE),
+            re.compile(r"\buob\s+amex\b", re.IGNORECASE),
+        ),
+    },
 )
 
 
@@ -62,17 +96,50 @@ def _needs_review(parsed: dict) -> bool:
     return parsed.get("record_status") == "needs_review"
 
 
-def _looks_like_trust_email(email: object) -> bool:
-    sender = _email_field(email, "sender").lower()
-    return "trustbank.sg" in sender or "trust" in sender
+def _resolve_account_hint(hint: str | None) -> str | None:
+    if not hint:
+        return None
+    if hint in ACCOUNT_MAP:
+        return ACCOUNT_MAP[hint]
+    if hint in ACCOUNT_MAP.values():
+        return hint
+    return None
 
 
-def _is_trust_repayment_receipt_without_source(parsed: dict, email: object) -> bool:
-    if parsed.get("card_or_account"):
-        return False
-    if parsed.get("bank") != "Trust" and not _looks_like_trust_email(email):
-        return False
+def _find_card_payment_rule(parsed: dict) -> dict | None:
+    destination = _resolve_account_hint(parsed.get("destination_account"))
+    if destination:
+        for rule in _CREDIT_CARD_PAYMENT_RULES:
+            if destination == rule["account"]:
+                return rule
 
+    merchant = str(parsed.get("merchant") or "")
+    for rule in _CREDIT_CARD_PAYMENT_RULES:
+        if any(pattern.search(merchant) for pattern in rule["aliases"]):
+            return rule
+
+    return None
+
+
+def _find_card_issuer_rule(parsed: dict, email: object) -> dict | None:
+    content = "\n".join(
+        (
+            str(parsed.get("bank") or ""),
+            str(parsed.get("merchant") or ""),
+            _email_field(email, "sender"),
+            _email_field(email, "subject"),
+            _email_field(email, "body"),
+        )
+    )
+
+    bank = parsed.get("bank")
+    for rule in _CREDIT_CARD_PAYMENT_RULES:
+        if bank in rule["issuer_banks"] or rule["issuer_pattern"].search(content):
+            return rule
+    return None
+
+
+def _is_card_repayment_receipt_without_source(parsed: dict, email: object) -> bool:
     content = "\n".join(
         (
             str(parsed.get("merchant") or ""),
@@ -81,21 +148,33 @@ def _is_trust_repayment_receipt_without_source(parsed: dict, email: object) -> b
             _email_field(email, "body"),
         )
     )
-    return _TRUST_REPAYMENT_RECEIPT_RE.search(content) is not None
+    if _CARD_REPAYMENT_RECEIPT_RE.search(content) is None:
+        return False
+
+    rule = _find_card_payment_rule(parsed) or _find_card_issuer_rule(parsed, email)
+    if not rule:
+        return False
+
+    if not parsed.get("card_or_account"):
+        return True
+
+    source_account = map_to_firefly_account(parsed)
+    return source_account in (None, rule["account"])
 
 
-def _normalise_trust_card_payment(parsed: dict) -> None:
-    merchant = str(parsed.get("merchant") or "")
-    if _TRUST_CARD_PAYMENT_RE.search(merchant) is None:
+def _normalise_card_payment(parsed: dict) -> None:
+    rule = _find_card_payment_rule(parsed)
+    if not rule:
         return
 
     source_account = map_to_firefly_account(parsed)
-    if source_account in (None, ACCOUNT_MAP.get("Trust")):
+    if source_account in (None, rule["account"]):
         return
 
+    account = rule["account"]
     parsed["transaction_type"] = "bill_payment"
-    parsed["destination_account"] = "Trust"
-    parsed["merchant"] = "Trust Card Payment"
+    parsed["destination_account"] = account
+    parsed["merchant"] = f"{account} Payment"
     parsed["suggested_category"] = None
 
 
@@ -133,7 +212,7 @@ def _build_firefly_payload(
         # For bill_payment: source is bank account, destination is credit card
         txn["source_name"] = source_account
         dest_hint = validated.get("destination_account", "")
-        dest_account = ACCOUNT_MAP.get(dest_hint) if dest_hint else None
+        dest_account = _resolve_account_hint(dest_hint)
         txn["destination_name"] = dest_account or merchant
 
     if foreign_info and foreign_info.get("rate") is not None:
@@ -197,11 +276,11 @@ async def process_new_emails() -> ProcessResult:
                 )
                 continue
 
-            if _is_trust_repayment_receipt_without_source(parsed, email):
+            if _is_card_repayment_receipt_without_source(parsed, email):
                 result.skipped += 1
                 continue
 
-            _normalise_trust_card_payment(parsed)
+            _normalise_card_payment(parsed)
 
             # Convert foreign currency to SGD before validation
             foreign_info = None

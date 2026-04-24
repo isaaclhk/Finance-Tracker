@@ -228,7 +228,7 @@ See `.env.example` for the full list. Key variables:
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
 - `OPENAI_API_KEY`
 - `IBKR_FLEX_TOKEN` / `IBKR_FLEX_QUERY_ID`
-- `ACCOUNT_MAP` -- JSON mapping card digits to Firefly accounts
+- `ACCOUNT_MAP` -- JSON mapping card/account digits to Firefly accounts
 
 ## Development
 

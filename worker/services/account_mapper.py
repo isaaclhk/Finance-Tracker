@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 _BANK_FALLBACKS: dict[str, str] = {
     "OCBC": "OCBC Child Savings Account",
     "UOB": "UOB One Account",
+    "UOB Absolute": "UOB Absolute Cashback Amex",
+    "UOB Absolute Cashback Amex": "UOB Absolute Cashback Amex",
+    "UOB Credit Card": "UOB Absolute Cashback Amex",
     "Trust": "Trust Card",
     "Syfe": "Syfe Cash",
 }
