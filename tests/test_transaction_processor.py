@@ -21,7 +21,7 @@ def test_build_firefly_payload_withdrawal():
     assert txn["amount"] == "5.5"
     assert txn["description"] == "BOBER TEA"
     assert txn["source_name"] == "UOB Credit Card"
-    assert txn["destination_name"] == "BOBER TEA"
+    assert txn["destination_name"] == "Merchant Spend"
     assert "14:15" in txn["date"]
 
 
@@ -39,6 +39,57 @@ def test_build_firefly_payload_deposit():
     assert txn["type"] == "deposit"
     assert txn["source_name"] == "Salary"
     assert txn["destination_name"] == "OCBC Savings"
+
+
+def test_build_firefly_payload_external_fund_transfer_uses_generic_expense_account():
+    validated = {
+        "amount": 42.0,
+        "merchant": "External Payee",
+        "date": "2026-03-25",
+        "time": None,
+        "transaction_type": "fund_transfer",
+    }
+    payload = _build_firefly_payload(validated, "UOB One Account")
+    txn = payload["transactions"][0]
+
+    assert txn["type"] == "withdrawal"
+    assert txn["description"] == "External Payee"
+    assert txn["source_name"] == "UOB One Account"
+    assert txn["destination_name"] == "Merchant Spend"
+
+
+def test_build_firefly_payload_true_transfer_preserves_destination_account():
+    validated = {
+        "amount": 100.0,
+        "merchant": "OCBC Child Savings Account",
+        "date": "2026-03-25",
+        "time": None,
+        "transaction_type": "fund_transfer",
+    }
+    payload = _build_firefly_payload(validated, "UOB One Account")
+    txn = payload["transactions"][0]
+
+    assert txn["type"] == "transfer"
+    assert txn["source_name"] == "UOB One Account"
+    assert txn["destination_name"] == "OCBC Child Savings Account"
+
+
+def test_build_firefly_payload_bill_payment_to_mapped_card():
+    validated = {
+        "amount": 250.0,
+        "merchant": "Trust Card Payment",
+        "date": "2026-03-25",
+        "time": None,
+        "destination_account": "Trust",
+        "transaction_type": "bill_payment",
+    }
+    payload = _build_firefly_payload(validated, "UOB One Account")
+    txn = payload["transactions"][0]
+
+    assert txn["type"] == "withdrawal"
+    assert txn["description"] == "Trust Card Payment"
+    assert txn["source_name"] == "UOB One Account"
+    assert txn["destination_name"] == "Trust Card"
 
 
 @pytest.mark.asyncio

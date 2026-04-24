@@ -124,6 +124,7 @@ See `finance-tracker-spec.md` for detailed setup instructions.
 See `.env.example` for the full list. Key variables:
 
 - `FIREFLY_TOKEN` -- Firefly III Personal Access Token
+- `FIREFLY_MERCHANT_EXPENSE_ACCOUNT` -- generic expense account for merchant spending (defaults to `Merchant Spend`)
 - `GMAIL_CREDENTIALS` -- Gmail OAuth2 JSON
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
 - `OPENAI_API_KEY`

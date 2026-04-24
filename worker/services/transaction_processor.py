@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
+from worker.config import FIREFLY_MERCHANT_EXPENSE_ACCOUNT
 from worker.integrations import exchange_rate, firefly_client, gmail_client
 from worker.parsers import llm_email_parser
 from worker.parsers.validator import WARNING_LARGE_AMOUNT, validate_parsed_transaction
@@ -28,7 +29,7 @@ class ProcessResult:
 def _build_firefly_payload(
     validated: dict, source_account: str, foreign_info: dict | None = None
 ) -> dict:
-    firefly_type, _, _ = get_firefly_transaction_type(validated.get("transaction_type", "unknown"))
+    firefly_type = get_firefly_transaction_type(validated.get("transaction_type", "unknown"))
 
     merchant = validated.get("merchant") or "Unknown"
 
@@ -45,7 +46,7 @@ def _build_firefly_payload(
         "amount": str(validated["amount"]),
         "description": merchant,
         "source_name": source_account,
-        "destination_name": merchant,
+        "destination_name": FIREFLY_MERCHANT_EXPENSE_ACCOUNT,
     }
 
     if validated.get("time"):

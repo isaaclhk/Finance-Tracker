@@ -26,16 +26,16 @@ def _load_account_map() -> dict[str, str]:
 
 ACCOUNT_MAP = _load_account_map()
 
-# Maps transaction_type -> (firefly_type, source_role, dest_role)
-TRANSACTION_TYPE_MAP: dict[str, tuple[str, str, str]] = {
-    "card_spending": ("withdrawal", "liability", "expense"),
-    "fund_transfer": ("transfer", "asset", "asset"),
-    "atm_withdrawal": ("withdrawal", "asset", "expense"),
-    "paynow": ("withdrawal", "asset", "expense"),
-    "incoming": ("deposit", "revenue", "asset"),
-    "refund": ("deposit", "revenue", "liability"),
-    "bill_payment": ("withdrawal", "asset", "liability"),
-    "giro": ("withdrawal", "asset", "expense"),
+# Maps parser transaction_type -> Firefly transaction type.
+TRANSACTION_TYPE_MAP: dict[str, str] = {
+    "card_spending": "withdrawal",
+    "fund_transfer": "transfer",
+    "atm_withdrawal": "withdrawal",
+    "paynow": "withdrawal",
+    "incoming": "deposit",
+    "refund": "deposit",
+    "bill_payment": "withdrawal",
+    "giro": "withdrawal",
 }
 
 
@@ -51,10 +51,5 @@ def map_to_firefly_account(parsed: dict) -> str | None:
     return None
 
 
-def get_firefly_transaction_type(
-    transaction_type: str,
-) -> tuple[str, str, str]:
-    return TRANSACTION_TYPE_MAP.get(
-        transaction_type,
-        ("withdrawal", "asset", "expense"),
-    )
+def get_firefly_transaction_type(transaction_type: str) -> str:
+    return TRANSACTION_TYPE_MAP.get(transaction_type, "withdrawal")

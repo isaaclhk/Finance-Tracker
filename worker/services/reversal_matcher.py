@@ -1,31 +1,13 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import httpx
 
 from worker.integrations import firefly_client
+from worker.utils.firefly_time import parse_firefly_datetime, time_matches
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_firefly_datetime(value: str) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _times_match(stored_dt: datetime, expected_hhmm: str) -> bool:
-    try:
-        hh, mm = expected_hhmm.split(":")
-        expected = stored_dt.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
-    except (ValueError, AttributeError):
-        return False
-    delta = abs((stored_dt.replace(second=0, microsecond=0) - expected).total_seconds())
-    return delta <= 60
 
 
 async def find_original_charge(validated: dict, source_account: str) -> list[dict]:
@@ -61,10 +43,10 @@ async def find_original_charge(validated: dict, source_account: str) -> list[dic
                 continue
             if abs(Decimal(str(sub.get("amount", 0))) - target_amount) >= Decimal("0.01"):
                 continue
-            stored_dt = _parse_firefly_datetime(sub.get("date", ""))
+            stored_dt = parse_firefly_datetime(sub.get("date", ""))
             if stored_dt is None or stored_dt.date() != txn_date:
                 continue
-            if target_time and not _times_match(stored_dt, target_time):
+            if target_time and not time_matches(stored_dt, target_time):
                 continue
             candidates.append(group)
             break

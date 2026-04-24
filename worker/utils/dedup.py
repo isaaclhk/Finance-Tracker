@@ -1,26 +1,18 @@
 import logging
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import httpx
 
 from worker.integrations import firefly_client
+from worker.utils.firefly_time import has_time_component, parse_firefly_datetime, time_matches
 
 logger = logging.getLogger(__name__)
 
 
 def _normalize_merchant(value: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", value.lower()).split())
-
-
-def _parse_firefly_datetime(value: str) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 def _uses_account(transaction: dict, account_name: str | None) -> bool:
@@ -30,29 +22,6 @@ def _uses_account(transaction: dict, account_name: str | None) -> bool:
         transaction.get("source_name"),
         transaction.get("destination_name"),
     }
-
-
-def _time_matches(stored_value: str, target_time: str | None) -> bool:
-    if not target_time:
-        return False
-
-    stored_dt = _parse_firefly_datetime(stored_value)
-    if stored_dt is None:
-        return False
-
-    try:
-        hour, minute = target_time.split(":")
-        expected = stored_dt.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
-    except (ValueError, AttributeError):
-        return False
-
-    stored = stored_dt.replace(second=0, microsecond=0)
-    return abs((stored - expected).total_seconds()) <= 60
-
-
-def _has_stored_time(value: str) -> bool:
-    stored_dt = _parse_firefly_datetime(value)
-    return bool(stored_dt and (stored_dt.hour or stored_dt.minute or stored_dt.second))
 
 
 async def is_duplicate(
@@ -96,8 +65,9 @@ async def is_duplicate(
             if not amounts_match:
                 continue
 
-            if target_time and _has_stored_time(existing_date):
-                if _time_matches(existing_date, target_time):
+            stored_dt = parse_firefly_datetime(existing_date)
+            if target_time and stored_dt and has_time_component(stored_dt):
+                if time_matches(stored_dt, target_time):
                     return True
                 continue
 

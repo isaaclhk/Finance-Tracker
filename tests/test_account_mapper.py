@@ -19,24 +19,16 @@ def test_map_unknown_returns_none():
 
 
 def test_transaction_type_card_spending():
-    t, src, dst = get_firefly_transaction_type("card_spending")
-    assert t == "withdrawal"
-    assert src == "liability"
-    assert dst == "expense"
+    assert get_firefly_transaction_type("card_spending") == "withdrawal"
 
 
 def test_transaction_type_incoming():
-    t, src, dst = get_firefly_transaction_type("incoming")
-    assert t == "deposit"
-    assert src == "revenue"
-    assert dst == "asset"
+    assert get_firefly_transaction_type("incoming") == "deposit"
 
 
 def test_transaction_type_bill_payment():
-    t, src, dst = get_firefly_transaction_type("bill_payment")
-    assert t == "withdrawal"
+    assert get_firefly_transaction_type("bill_payment") == "withdrawal"
 
 
 def test_transaction_type_unknown_defaults():
-    t, src, dst = get_firefly_transaction_type("something_new")
-    assert t == "withdrawal"
+    assert get_firefly_transaction_type("something_new") == "withdrawal"

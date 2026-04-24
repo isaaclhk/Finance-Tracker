@@ -29,7 +29,6 @@ class Email:
     subject: str
     body: str
     timestamp: str
-    attachments: list[dict] | None = None  # [{"filename": ..., "data": bytes}]
 
 
 def _build_service():
@@ -92,30 +91,6 @@ def _extract_body(payload: dict) -> str:
     return ""
 
 
-def _extract_attachments(service, message_id: str, payload: dict) -> list[dict]:
-    attachments = []
-    for part in payload.get("parts", []):
-        filename = part.get("filename", "")
-        if not filename:
-            continue
-        attachment_id = part.get("body", {}).get("attachmentId")
-        if not attachment_id:
-            continue
-        try:
-            att = (
-                service.users()
-                .messages()
-                .attachments()
-                .get(userId="me", messageId=message_id, id=attachment_id)
-                .execute()
-            )
-            data = base64.urlsafe_b64decode(att["data"])
-            attachments.append({"filename": filename, "data": data})
-        except (HttpError, KeyError):
-            logger.exception("Failed to fetch attachment %s", filename)
-    return attachments
-
-
 def _parse_message(service, msg_id: str) -> Email | None:
     msg = service.users().messages().get(userId="me", id=msg_id).execute()
     headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
@@ -133,15 +108,12 @@ def _parse_message(service, msg_id: str) -> Email | None:
         except (ValueError, TypeError):
             timestamp = date_str
 
-    attachments = _extract_attachments(service, msg_id, msg["payload"])
-
     return Email(
         message_id=msg_id,
         sender=sender,
         subject=subject,
         body=body,
         timestamp=timestamp,
-        attachments=attachments or None,
     )
 
 

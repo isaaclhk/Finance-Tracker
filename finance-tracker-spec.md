@@ -237,7 +237,7 @@ CMD ["uv", "run", "uvicorn", "worker.main:app", "--host", "0.0.0.0", "--port", "
   - Trust Bank: TBD — verify actual sender address
 - Multiple Gmail accounts forward alerts to one primary account; Gmail filters label them all as "Bank Alerts"
 - Track polling state via Gmail History API (`historyId`) for exact incremental polling — only fetches genuinely new messages each cycle (stored in a JSON cursor file, falls back to timestamp-based search if `historyId` expires)
-- Supports email attachments extraction (for potential future use)
+- Reads message body text only; attachments are ignored because bank alert ingestion does not use them
 
 ### Universal LLM Email Parser (`llm_email_parser.py`)
 
@@ -341,14 +341,14 @@ The `transaction_type` from the LLM determines how the transaction is recorded i
 
 | transaction_type | Firefly III type | Source → Destination |
 |-----------------|------------------|---------------------|
-| `card_spending` | Withdrawal | Credit Card (liability) → Merchant (expense) |
+| `card_spending` | Withdrawal | Credit Card (liability) → Merchant Spend (expense); merchant stays in description |
 | `fund_transfer` | Transfer | Bank Account (asset) → Another account |
-| `atm_withdrawal` | Withdrawal | Bank Account (asset) → "Cash" (expense) |
-| `paynow` | Withdrawal | Bank Account (asset) → Recipient (expense) |
+| `atm_withdrawal` | Withdrawal | Bank Account (asset) → Merchant Spend (expense) |
+| `paynow` | Withdrawal | Bank Account (asset) → Merchant Spend (expense); recipient stays in description |
 | `incoming` | Deposit | Payer (revenue) → Bank Account (asset) |
 | `refund` | Deposit | Merchant (revenue) → Credit Card (liability) |
-| `bill_payment` | Transfer | Bank Account (asset) → Credit Card (liability) |
-| `giro` | Withdrawal | Bank Account (asset) → Payee (expense) |
+| `bill_payment` | Withdrawal | Bank Account (asset) → Credit Card (liability) |
+| `giro` | Withdrawal | Bank Account (asset) → Merchant Spend (expense); payee stays in description |
 
 ### Monthly eStatement Reconciliation (`statement_parser.py` + `reconciler.py`)
 
@@ -756,7 +756,8 @@ Revenue accounts (auto-created on first transaction):
 
 Note: DBS accounts are personal/private and excluded from tracking.
 
-Expense accounts: auto-created per merchant by Firefly III
+Expense accounts:
+- Merchant Spend (generic destination for ordinary spending; merchant names stay in transaction descriptions)
 
 **Important:** Balance adjustments for IBKR/Syfe use transfer transactions (not deposits/withdrawals) to/from the "Market Value Adjustment" account. This ensures investment value changes don't appear as income or expenses in spending reports.
 
