@@ -13,6 +13,8 @@ _BANK_FALLBACKS: dict[str, str] = {
     "UOB Absolute Cashback Amex": "UOB Absolute Cashback Amex",
     "UOB Credit Card": "UOB Absolute Cashback Amex",
     "Trust": "Trust Card",
+    "Trust Link": "Trust Card",
+    "Trust Link Card": "Trust Card",
     "Syfe": "Syfe Cash",
 }
 
@@ -46,6 +48,8 @@ def map_to_firefly_account(parsed: dict) -> str | None:
     hint = parsed.get("card_or_account", "")
     if hint and hint in ACCOUNT_MAP:
         return ACCOUNT_MAP[hint]
+    if hint and hint in ACCOUNT_MAP.values():
+        return hint
 
     bank = parsed.get("bank", "unknown")
     if bank in ACCOUNT_MAP:

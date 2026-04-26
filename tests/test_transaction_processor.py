@@ -171,6 +171,83 @@ async def test_process_new_emails_success():
 
 
 @pytest.mark.asyncio
+async def test_process_records_trust_link_card_spend_without_last_four():
+    email = Email(
+        message_id="trust-link-card-spend",
+        sender="Trust <from_us@trustbank.sg>",
+        subject="Yay! Transaction successful 😁",
+        body=(
+            "You've spent SGD 9.90 at MOS BURGER-TAMPINESS HUB SINGAPORE SG "
+            "on 26 Apr 2026 16:51SGT with Trust Link card."
+        ),
+        timestamp="2026-04-26T16:51:00+08:00",
+    )
+    parsed = {
+        "record_status": "needs_review",
+        "non_transaction_reason": "Card identifier not provided in alert",
+        "currency": "SGD",
+        "amount": 9.90,
+        "merchant": "MOS BURGER-TAMPINESS HUB SINGAPORE SG",
+        "date": "2026-04-26",
+        "time": "16:51",
+        "card_or_account": None,
+        "transaction_type": "card_spending",
+        "bank": "Trust",
+        "suggested_category": "Food & Drink",
+    }
+    firefly_txn = {
+        "id": "90",
+        "attributes": {
+            "transactions": [
+                {
+                    "description": "MOS BURGER-TAMPINESS HUB SINGAPORE SG",
+                    "amount": "9.90",
+                }
+            ]
+        },
+    }
+
+    with (
+        patch(
+            "worker.services.transaction_processor.gmail_client.fetch_new_alerts",
+            new_callable=AsyncMock,
+            return_value=([email], 99999, "2026-04-26T16:51:00+08:00"),
+        ),
+        patch("worker.services.transaction_processor.gmail_client.save_cursor") as mock_save,
+        patch(
+            "worker.services.transaction_processor.llm_email_parser.parse_and_categorize",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "worker.services.transaction_processor.is_duplicate",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "worker.services.transaction_processor.firefly_client.create_transaction",
+            new_callable=AsyncMock,
+            return_value=firefly_txn,
+        ) as mock_create,
+    ):
+        from worker.services.transaction_processor import process_new_emails
+
+        result = await process_new_emails()
+
+    payload = mock_create.await_args.args[0]
+    txn = payload["transactions"][0]
+    assert txn["type"] == "withdrawal"
+    assert txn["description"] == "MOS BURGER-TAMPINESS HUB SINGAPORE SG"
+    assert txn["source_name"] == "Trust Card"
+    assert txn["destination_name"] == "Merchant Spend"
+    mock_save.assert_called_once_with(99999, "2026-04-26T16:51:00+08:00")
+    assert result.cursor_saved is True
+    assert result.new_count == 1
+    assert result.pending_review[0]["type"] == "category_confirmation"
+    assert result.pending_review[0]["parsed"]["card_or_account"] == "Trust Card"
+
+
+@pytest.mark.asyncio
 async def test_process_skips_duplicates():
     email = Email(
         message_id="123",

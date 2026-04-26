@@ -27,6 +27,13 @@ def test_parse_prompt_guides_card_payment_classification():
     assert "paid card account" in prompt
 
 
+def test_parse_prompt_guides_named_card_without_last_four():
+    prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
+    assert "known named cards" in prompt
+    assert "trust link card" in prompt
+    assert "needs_review" in prompt
+
+
 @pytest.mark.asyncio
 async def test_parse_reversal_email_passes_through():
     parsed = {

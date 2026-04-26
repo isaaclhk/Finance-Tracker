@@ -62,6 +62,9 @@ record_status="needs_review" when the email appears financial but is missing
 critical transaction details.
 For non_transaction emails, set transaction_type="non_transaction" and explain
 the reason briefly in non_transaction_reason.
+For known named cards without last 4 digits, use the card product as
+card_or_account instead of marking the alert needs_review. For example, Trust
+Link card means card_or_account="Trust Link Card".
 If the email says "has been reversed", "reversal", or "transaction reversed",
 use transaction_type="reversal" — the date/time fields refer to the ORIGINAL
 charge, not the reversal notice. Use transaction_type="refund" only for

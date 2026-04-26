@@ -24,6 +24,14 @@ _CARD_REPAYMENT_RECEIPT_RE = re.compile(
     r"\b(?:credit\s+card\s+)?repayment\b|\bpayment\s+received\b",
     re.IGNORECASE,
 )
+_MISSING_CARD_IDENTIFIER_RE = re.compile(
+    r"\b(?:card|account)\s+identifier\b|missing.*\bcard\b|\bcard\b.*not\s+provided",
+    re.IGNORECASE,
+)
+_CARD_SPEND_RE = re.compile(
+    r"\b(?:spent|spend|purchase|card\s+transaction|charged)\b",
+    re.IGNORECASE,
+)
 
 
 def _account_name_for(*hints: str, default: str) -> str:
@@ -40,6 +48,10 @@ _CREDIT_CARD_PAYMENT_RULES = (
         "account": _account_name_for("Trust", "Trust Card", default="Trust Card"),
         "issuer_banks": {"Trust"},
         "issuer_pattern": re.compile(r"\btrust\b|trustbank\.sg", re.IGNORECASE),
+        "source_patterns": (
+            re.compile(r"\btrust\s+link\s+card\b", re.IGNORECASE),
+            re.compile(r"\btrust\s+card\b", re.IGNORECASE),
+        ),
         "aliases": (
             re.compile(r"^\s*trust\s*$", re.IGNORECASE),
             re.compile(r"\btrust\s+(?:bank|card|credit\s+card)\b", re.IGNORECASE),
@@ -54,6 +66,11 @@ _CREDIT_CARD_PAYMENT_RULES = (
         ),
         "issuer_banks": {"UOB"},
         "issuer_pattern": re.compile(r"\buob\b|uobgroup\.com", re.IGNORECASE),
+        "source_patterns": (
+            re.compile(r"\buob\s+absolute\b", re.IGNORECASE),
+            re.compile(r"\babsolute\s+cashback\b", re.IGNORECASE),
+            re.compile(r"\buob\s+amex\b", re.IGNORECASE),
+        ),
         "aliases": (
             re.compile(r"\buob\s+absolute\b", re.IGNORECASE),
             re.compile(r"\babsolute\s+cashback\b", re.IGNORECASE),
@@ -137,6 +154,60 @@ def _find_card_issuer_rule(parsed: dict, email: object) -> dict | None:
         if bank in rule["issuer_banks"] or rule["issuer_pattern"].search(content):
             return rule
     return None
+
+
+def _find_card_source_rule(parsed: dict, email: object) -> dict | None:
+    content = "\n".join(
+        (
+            str(parsed.get("bank") or ""),
+            str(parsed.get("merchant") or ""),
+            _email_field(email, "sender"),
+            _email_field(email, "subject"),
+            _email_field(email, "body"),
+        )
+    )
+
+    for rule in _CREDIT_CARD_PAYMENT_RULES:
+        if any(pattern.search(content) for pattern in rule["source_patterns"]):
+            return rule
+    return None
+
+
+def _enrich_known_card_source(parsed: dict, email: object) -> None:
+    if parsed.get("card_or_account"):
+        return
+    if parsed.get("amount") is None:
+        return
+    if not parsed.get("merchant"):
+        return
+
+    transaction_type = parsed.get("transaction_type")
+    if transaction_type not in (None, "unknown", "card_spending"):
+        return
+
+    content = "\n".join(
+        (
+            str(parsed.get("merchant") or ""),
+            _email_field(email, "subject"),
+            _email_field(email, "body"),
+        )
+    )
+    if not _CARD_SPEND_RE.search(content):
+        return
+
+    rule = _find_card_source_rule(parsed, email)
+    if not rule:
+        return
+
+    if _needs_review(parsed):
+        reason = str(parsed.get("non_transaction_reason") or "")
+        if not _MISSING_CARD_IDENTIFIER_RE.search(reason):
+            return
+        parsed["record_status"] = "recordable"
+        parsed["non_transaction_reason"] = None
+
+    parsed["card_or_account"] = rule["account"]
+    parsed["transaction_type"] = "card_spending"
 
 
 def _is_card_repayment_receipt_without_source(parsed: dict, email: object) -> bool:
@@ -261,6 +332,8 @@ async def process_new_emails() -> ProcessResult:
                     }
                 )
                 continue
+
+            _enrich_known_card_source(parsed, email)
 
             if _is_non_transaction(parsed):
                 result.skipped += 1
