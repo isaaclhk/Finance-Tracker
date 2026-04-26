@@ -47,7 +47,7 @@ flowchart TD
     Status -->|"recordable"| Convert["Convert foreign currency to SGD if needed"]
 
     Convert --> Validate["Validate amount, date, account hints, type"]
-    Validate --> MapAccount["Map card/account digits to Firefly account"]
+    Validate --> MapAccount["Resolve source account<br/>ACCOUNT_MAP + card rules"]
     MapAccount --> Reversal{"Reversal?"}
     Reversal -->|"Yes"| MatchOriginal["Find matching original charge"]
     MatchOriginal --> ReversalResult["Delete exact match or notify if missing/ambiguous"]
@@ -119,7 +119,9 @@ flowchart LR
     IBKRNow --> Reply
 ```
 
-For ordinary spending, Firefly gets one generic expense account: `Merchant Spend`. The merchant name is kept in the transaction `description`, and the spend category is stored in Firefly's `category_name`. Telegram category confirmations update `category_name`, while `/spent` and `/summary` still use the description to show merchant-level reporting. Credit-card bill payments to mapped cards are recorded silently without category prompts.
+For ordinary spending, Firefly gets one generic expense account: `Merchant Spend`. The merchant name is kept in the transaction `description`, and the spend category is stored in Firefly's `category_name`. Telegram category confirmations update `category_name`, while `/spent` and `/summary` still use the description to show merchant-level reporting.
+
+Card and account resolution is split into two simple layers. `ACCOUNT_MAP` maps known card/account digits to Firefly account names, while card rules map named card alerts and repayment aliases such as `Trust Link Card` or card-payment payees to the correct Firefly liability account. Credit-card bill payments to known cards are recorded silently without category prompts.
 
 ## Telegram Bot Commands
 
@@ -178,8 +180,10 @@ finance-tracker/
 │   │   └── openai_client.py
 │   ├── services/
 │   │   ├── transaction_processor.py
+│   │   ├── account_config.py
 │   │   ├── categorizer.py
 │   │   ├── account_mapper.py
+│   │   ├── card_rules.py
 │   │   └── salary.py
 │   └── utils/
 │       └── dedup.py
@@ -230,6 +234,26 @@ See `.env.example` for the full list. Key variables:
 - `IBKR_FLEX_TOKEN` / `IBKR_FLEX_QUERY_ID`
 - `ACCOUNT_MAP` -- JSON mapping card/account digits to Firefly accounts
 - `CARD_RULES` -- optional JSON list of extra card aliases, issuer patterns, and repayment aliases
+
+`ACCOUNT_MAP` is for exact account hints, usually last 4 digits from bank alerts:
+
+```json
+{"1234": "UOB Absolute Cashback Amex", "5678": "Trust Card", "9012": "OCBC Savings"}
+```
+
+`CARD_RULES` is only needed when adding card products whose alerts use names rather than digits, or when repayment emails use payee aliases. Built-in rules already cover Trust Card, Trust Link Card, and UOB Absolute Cashback Amex. Extra rules use this shape:
+
+```json
+[
+  {
+    "account": "New Card",
+    "issuer_banks": ["NewBank"],
+    "issuer_patterns": ["newbank\\.com"],
+    "source_patterns": ["new card"],
+    "payment_patterns": ["new card payment"]
+  }
+]
+```
 
 ## Development
 
