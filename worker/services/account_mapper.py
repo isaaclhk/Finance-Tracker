@@ -1,35 +1,5 @@
-import json
-import logging
-
-from worker.config import ACCOUNT_MAP_JSON
-
-logger = logging.getLogger(__name__)
-
-# Bank name fallbacks (always available)
-_BANK_FALLBACKS: dict[str, str] = {
-    "OCBC": "OCBC Child Savings Account",
-    "UOB": "UOB One Account",
-    "UOB Absolute": "UOB Absolute Cashback Amex",
-    "UOB Absolute Cashback Amex": "UOB Absolute Cashback Amex",
-    "UOB Credit Card": "UOB Absolute Cashback Amex",
-    "Trust": "Trust Card",
-    "Trust Link": "Trust Card",
-    "Trust Link Card": "Trust Card",
-    "Syfe": "Syfe Cash",
-}
-
-
-def _load_account_map() -> dict[str, str]:
-    custom: dict[str, str] = {}
-    if ACCOUNT_MAP_JSON:
-        try:
-            custom = json.loads(ACCOUNT_MAP_JSON)
-        except json.JSONDecodeError:
-            logger.error("Invalid ACCOUNT_MAP JSON in env var")
-    return {**_BANK_FALLBACKS, **custom}
-
-
-ACCOUNT_MAP = _load_account_map()
+from worker.services.account_config import resolve_account_hint
+from worker.services.card_rules import resolve_card_source_account
 
 # Maps parser transaction_type -> Firefly transaction type.
 TRANSACTION_TYPE_MAP: dict[str, str] = {
@@ -46,16 +16,12 @@ TRANSACTION_TYPE_MAP: dict[str, str] = {
 
 def map_to_firefly_account(parsed: dict) -> str | None:
     hint = parsed.get("card_or_account", "")
-    if hint and hint in ACCOUNT_MAP:
-        return ACCOUNT_MAP[hint]
-    if hint and hint in ACCOUNT_MAP.values():
-        return hint
+    source_account = resolve_account_hint(hint) or resolve_card_source_account(hint)
+    if source_account:
+        return source_account
 
     bank = parsed.get("bank", "unknown")
-    if bank in ACCOUNT_MAP:
-        return ACCOUNT_MAP[bank]
-
-    return None
+    return resolve_account_hint(bank)
 
 
 def get_firefly_transaction_type(transaction_type: str) -> str:

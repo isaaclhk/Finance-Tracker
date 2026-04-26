@@ -24,6 +24,7 @@ IBKR_FLEX_QUERY_ID = os.getenv("IBKR_FLEX_QUERY_ID", "")
 
 # Account mapping (JSON string: {"1234": "UOB Credit Card", "5678": "OCBC Savings", ...})
 ACCOUNT_MAP_JSON = os.getenv("ACCOUNT_MAP", "")
+CARD_RULES_JSON = os.getenv("CARD_RULES", "")
 
 # Validation thresholds
 VALIDATION_LARGE_AMOUNT_THRESHOLD = float(os.getenv("VALIDATION_LARGE_AMOUNT_THRESHOLD", "5000"))

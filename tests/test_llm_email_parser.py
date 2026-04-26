@@ -21,16 +21,15 @@ def test_parse_prompt_guides_record_status_classification():
 
 def test_parse_prompt_guides_card_payment_classification():
     prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
-    assert "trust bank" in prompt
-    assert "uob absolute" in prompt
+    assert "credit card accounts" in prompt
     assert "bill_payment" in prompt
     assert "paid card account" in prompt
 
 
 def test_parse_prompt_guides_named_card_without_last_four():
     prompt = openai_client.PARSE_SYSTEM_PROMPT.lower()
-    assert "known named cards" in prompt
-    assert "trust link card" in prompt
+    assert "named cards without last 4 digits" in prompt
+    assert "card product text" in prompt
     assert "needs_review" in prompt
 
 

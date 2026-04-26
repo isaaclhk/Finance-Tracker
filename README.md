@@ -229,6 +229,7 @@ See `.env.example` for the full list. Key variables:
 - `OPENAI_API_KEY`
 - `IBKR_FLEX_TOKEN` / `IBKR_FLEX_QUERY_ID`
 - `ACCOUNT_MAP` -- JSON mapping card/account digits to Firefly accounts
+- `CARD_RULES` -- optional JSON list of extra card aliases, issuer patterns, and repayment aliases
 
 ## Development
 

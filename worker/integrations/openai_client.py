@@ -62,18 +62,16 @@ record_status="needs_review" when the email appears financial but is missing
 critical transaction details.
 For non_transaction emails, set transaction_type="non_transaction" and explain
 the reason briefly in non_transaction_reason.
-For known named cards without last 4 digits, use the card product as
-card_or_account instead of marking the alert needs_review. For example, Trust
-Link card means card_or_account="Trust Link Card".
+For named cards without last 4 digits, use the card product text as
+card_or_account instead of marking the alert needs_review.
 If the email says "has been reversed", "reversal", or "transaction reversed",
 use transaction_type="reversal" — the date/time fields refer to the ORIGINAL
 charge, not the reversal notice. Use transaction_type="refund" only for
 merchant-initiated refunds (e.g. "refund from <merchant>").
-Payments to Trust Bank, Trust Card, Trust credit card, UOB Absolute, UOB
-Absolute Cashback Amex, UOB Credit Card, or UOB Amex are bill_payment
-transactions with destination_account set to the paid card account. A card-side
-repayment receipt without a source account should be non_transaction because the
-debit-side bank alert records the actual payment."""
+Payments to credit card accounts are bill_payment transactions with
+destination_account set to the paid card account. A card-side repayment receipt
+without a source account should be non_transaction because the debit-side bank
+alert records the actual payment."""
 
 _client: AsyncOpenAI | None = None
 
